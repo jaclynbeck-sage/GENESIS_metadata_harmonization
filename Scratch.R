@@ -28,6 +28,7 @@ syn_ids <- list(
 
 expectedColumns <- c("individualID", "dataContributionGroup", "cohort", "sex",
                      "race", "isHispanic", "ageDeath", "pmi")
+optionalColumns <- c("apoeGenotype", "amyCerad", "amyAny", "Braak", "bScore")
 
 sex_values <- c("female", "male")
 race_values <- c("American Indian or Alaska Native",
@@ -49,29 +50,42 @@ meta <- read.csv(meta_file$path)
 colnames(meta)
 
 setdiff(expectedColumns, colnames(meta))
+setdiff(optionalColumns, colnames(meta))
 
-print_unique_column_vals(meta, c("ageDeath", "PMI", "pmi"))
-print_columns_with_nas(meta)
+print_qc(meta, isHispanic_col = "ethnicity", pmi_col = "PMI", cerad_col = "CERAD")
 
-tmp <- subset(meta, ageDeath != "89+")
-any(as.numeric(tmp$ageDeath) >= 89)
-
+# TODO should pull metadata from Diverse Cohorts, MSBB, and ROSMAP for the non-NPS-AD samples,
+# since some info like Braak is missing from this metadata
 meta_new <- meta %>%
+  select(-Component) %>%
   rename(isHispanic = ethnicity,
          pmi = PMI,
+         amyCerad = CERAD,
          # TODO Check if this is correct, it might be things like "Rush", "MSBB", etc
          dataContributionGroup = individualMetadataSource) %>% 
   mutate(pmi = pmi / 60,
          pmiUnits = "hours",
          ageDeath = case_when(ageDeath == "89+" ~ "90+",
-                              TRUE ~ ageDeath),
+                              .default = ageDeath),
          race = case_when(is.na(race) ~ "Missing or unknown",
                           !is.na(race) ~ race),
          isHispanic = case_when(isHispanic == "Hispanic or Latino" ~ "True",
                                 isHispanic == "Not Hispanic or Latino" ~ "False",
-                                is.na(isHispanic) ~ "Missing or unknown"))
+                                is.na(isHispanic) ~ "Missing or unknown"),
+         apoeGenotype = case_when(is.na(apoeGenotype) ~ "Missing or unknown",
+                                  .default = as.character(apoeGenotype)),
+         amyCerad = case_when(amyCerad == 1 ~ "None/No AD/C0",
+                              amyCerad == 2 ~ "Sparse/Possible/C1",
+                              amyCerad == 3 ~ "Moderate/Probable/C2",
+                              amyCerad == 4 ~ "Frequent/Definite/C3",
+                              is.na(amyCerad) ~ "Missing or unknown"),
+         amyAny = case_when(amyCerad == "None/No AD/C0" ~ "0",
+                            amyCerad == "Missing or unknown" ~ amyCerad,
+                            .default = "1"),
+         Braak = "Missing or unknown",
+         bScore = "Missing or unknown")
 
-print_unique_column_vals(meta_new, c("ageDeath", "PMI", "pmi"))
+print_qc(meta_new)
 print_columns_with_nas(meta_new)
 
 write.csv(meta_new, file.path("data", "output", 
@@ -89,18 +103,16 @@ colnames(meta)
 
 setdiff(expectedColumns, colnames(meta))
 
-print_unique_column_vals(meta, c("ageDeath", "pmi", "age_at_visit_max", 
-                                 "age_first_ad_dx", "age_death", "cts_mmse30_lv", 
-                                 "cts_mmse30_first_ad_dx"))
-print_columns_with_nas(meta)
-
-tmp <- subset(meta, age_death != "" & age_death != "90+")
-any(as.numeric(tmp$age_death) >= 90)
+print_qc(meta, ageDeath_col = "age_death", sex_col = "msex", isHispanic_col = "spanish",
+         apoe_col = "apoe_genotype", braak_col = "braaksc", cerad_col = "ceradsc")
 
 meta_new <- meta %>%
   rename(isHispanic = spanish,
          ageDeath = age_death,
          sex = msex,
+         apoeGenotype = apoe_genotype,
+         amyCerad = ceradsc,
+         Braak = braaksc,
          # TODO Check if this is correct
          cohort = Study) %>% 
   mutate(
@@ -108,9 +120,9 @@ meta_new <- meta %>%
                     sex == 0 ~ "female",
                     is.na(sex) ~ "Missing or unknown"),
     ageDeath = case_when(ageDeath == "" ~ "Missing or unknown",
-                         TRUE ~ ageDeath),
+                         .default = ageDeath),
     pmi = case_when(is.na(pmi) ~ "Missing or unknown",
-                    TRUE ~ as.character(pmi)),
+                    .default = as.character(pmi)),
     race = case_when(is.na(race) ~ "Missing or unknown",
                      race == 1 ~ "White",
                      race == 2 ~ "Black or African American",
@@ -122,14 +134,23 @@ meta_new <- meta %>%
     isHispanic = case_when(isHispanic == 1 ~ "True",
                            isHispanic == 2 ~ "False",
                            is.na(isHispanic) ~ "Missing or unknown"),
+    apoeGenotype = case_when(is.na(apoeGenotype) ~ "Missing or unknown",
+                             .default = as.character(apoeGenotype)),
+    Braak = case_when(Braak == 0 ~ "None",
+                      is.na(Braak) ~ "Missing or unknown",
+                      .default = paste("Stage", to_Roman_numerals(Braak))),
+    bScore = get_bScore(Braak),
+    amyCerad = case_when(amyCerad == 1 ~ "Frequent/Definite/C3",
+                         amyCerad == 2 ~ "Moderate/Probable/C2",
+                         amyCerad == 3 ~ "Sparse/Possible/C1",
+                         amyCerad == 4 ~ "None/No AD/C0",
+                         is.na(amyCerad) ~ "Missing or unknown"),
+    amyAny = get_amyAny(amyCerad),
     # TODO
     dataContributionGroup = "TBD"
   )
 
-print_unique_column_vals(meta_new, c("ageDeath", "pmi", "age_at_visit_max", 
-                                     "age_first_ad_dx", "age_death", "cts_mmse30_lv", 
-                                     "cts_mmse30_first_ad_dx"))
-print_columns_with_nas(meta_new)
+print_qc(meta_new)
 
 write.csv(meta_new, file.path("data", "output", 
                               str_replace(meta_file$name, ".csv", "_harmonized.csv")))
@@ -146,8 +167,7 @@ colnames(meta)
 
 setdiff(expectedColumns, colnames(meta))
 
-print_unique_column_vals(meta, c("ageDeath", "pmi"))
-print_columns_with_nas(meta)
+print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
 
 tmp <- subset(meta, ageDeath != "90+")
 any(as.numeric(tmp$ageDeath) >= 90)
@@ -160,11 +180,10 @@ meta_new <- meta %>%
          # TODO Check if this is correct
          dataContributionGroup = individualIdSource) %>% 
   mutate(pmi = case_when(is.na(pmi) ~ "Missing or unknown",
-                         TRUE ~ pmi))
+                         .default = pmi))
          # TODO isHispanic and race
 
-print_unique_column_vals(meta_new, c("ageDeath", "pmi"))
-print_columns_with_nas(meta_new)
+print_qc(meta_new)
 
 
 
@@ -178,28 +197,29 @@ colnames(meta)
 
 setdiff(expectedColumns, colnames(meta))
 
-print_unique_column_vals(meta, c("ageDeath", "pmi"))
-print_columns_with_nas(meta)
-
-tmp <- subset(meta, ageDeath != "90+")
-any(as.numeric(tmp$ageDeath) >= 90)
-tmp$ageDeath[tmp$ageDeath >= 90]
+print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
 
 meta_new <- meta %>%
   rename(isHispanic = ethnicity,
+         amyCerad = CERAD,
          dataContributionGroup = individualIdSource) %>% 
   mutate(pmi = case_when(is.na(pmi) ~ "Missing or unknown",
-                         TRUE ~ as.character(pmi)),
+                         .default = as.character(pmi)),
          ageDeath = case_when(ageDeath == 90 ~ "90+",
-                              TRUE ~ ageDeath),
+                              .default = ageDeath),
          race = "White",
          isHispanic = "False",
+         apoeGenotype = as.character(apoeGenotype),
+         Braak = case_when(is.na(Braak) ~ "Missing or unknown",
+                           .default = paste("Stage", to_Roman_numerals(Braak))),
+         bScore = get_bScore(Braak),
+         amyCerad = "TBD", # TODO
+         amyAny = get_amyAny(amyCerad),
          dataContributionGroup = case_when(is.na(dataContributionGroup) ~ "Stanley Medical Research Institute",
                                            dataContributionGroup == "BannerSun" ~ "Banner Sun Health Research Institute"),
          cohort = dataContributionGroup)
 
-print_unique_column_vals(meta_new, c("ageDeath", "pmi"))
-print_columns_with_nas(meta_new)
+print_qc(meta_new)
 
 write.csv(meta_new, file.path("data", "output", 
                               str_replace(meta_file$name, ".csv", "_harmonized.csv")))
@@ -215,22 +235,25 @@ colnames(meta)
 
 setdiff(expectedColumns, colnames(meta))
 
-print_unique_column_vals(meta, c("ageDeath", "pmi"))
-print_columns_with_nas(meta)
+print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
 
 meta_new <- meta %>%
   rename(isHispanic = ethnicity,
+         amyCerad = CERAD,
          dataContributionGroup = individualIdSource) %>% 
-  mutate(pmi = "TBD",
-         ageDeath = "TBD",
-         race = str_trim(race),
+  mutate(race = str_trim(race),
          isHispanic = case_when(str_trim(isHispanic) == "Hispanic or Latino" ~ "True",
                                 isHispanic == "Not Hispanic or Latino" ~ "False",
                                 isHispanic == "Middle Eastern" ~ "False"),
+         apoeGenotype = case_when(is.na(apoeGenotype) ~ "Missing or unknown",
+                                  .default = as.character(apoeGenotype)),
+         amyCerad = "Missing or unknown",
+         amyAny = "Missing or unknown",
+         Braak = "Missing or unknown",
+         bScore = "Missing or unknown",
          cohort = dataContributionGroup)
 
-print_unique_column_vals(meta_new, c("ageDeath", "pmi"))
-print_columns_with_nas(meta_new)
+print_qc(meta_new)
 
 write.csv(meta_new, file.path("data", "output", 
                               str_replace(meta_file$name, ".csv", "_harmonized.csv")))
@@ -246,23 +269,24 @@ colnames(meta)
 
 setdiff(expectedColumns, colnames(meta))
 
-print_unique_column_vals(meta, c("ageDeath", "pmi"))
-print_columns_with_nas(meta)
-
-tmp <- subset(meta, ageDeath != "90_or_over")
-any(as.numeric(tmp$ageDeath) >= 90)
+print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
 
 meta_new <- meta %>%
   rename(isHispanic = ethnicity,
+         amyCerad = CERAD,
          dataContributionGroup = individualIdSource) %>% 
-  mutate(pmi = "Missing or unknown",
-         ageDeath = case_when(ageDeath == "90_or_over" ~ "90+",
-                              TRUE ~ ageDeath),
+  mutate(ageDeath = case_when(ageDeath == "90_or_over" ~ "90+",
+                              .default = ageDeath),
          isHispanic = "False",
+         apoeGenotype = as.character(apoeGenotype),
+         amyCerad = "Missing or unknown",
+         amyAny = "Missing or unknown",
+         Braak = case_when(is.na(Braak) ~ "Missing or unknown",
+                           .default = paste("Stage", to_Roman_numerals(floor(Braak)))),
+         bScore = get_bScore(Braak),
          cohort = dataContributionGroup)
 
-print_unique_column_vals(meta_new, c("ageDeath", "pmi"))
-print_columns_with_nas(meta_new)
+print_qc(meta_new)
 
 write.csv(meta_new, file.path("data", "output", 
                               str_replace(meta_file$name, ".csv", "_harmonized.csv")))
@@ -278,23 +302,26 @@ colnames(meta)
 
 setdiff(expectedColumns, colnames(meta))
 
-print_unique_column_vals(meta, c("ageDeath", "pmi"))
-print_columns_with_nas(meta)
-
-tmp <- subset(meta, ageDeath != "90_or_over")
-any(as.numeric(tmp$ageDeath) >= 90)
+print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
 
 meta_new <- meta %>%
   rename(isHispanic = ethnicity,
+         amyCerad = CERAD,
          dataContributionGroup = individualIdSource) %>% 
-  mutate(pmi = "Missing or unknown",
-         ageDeath = case_when(ageDeath == "90_or_over" ~ "90+",
-                              TRUE ~ ageDeath),
+  mutate(ageDeath = case_when(ageDeath == "90_or_over" ~ "90+",
+                              .default = ageDeath),
          isHispanic = "Missing or unknown",
+         apoeGenotype = case_when(is.na(apoeGenotype) ~ "Missing or unknown",
+                                  .default = as.character(apoeGenotype)),
+         amyCerad = "Missing or unknown",
+         amyAny = "Missing or unknown",
+         Braak = case_when(is.na(Braak) ~ "Missing or unknown",
+                           Braak == 0 ~ "None",
+                           .default = paste("Stage", to_Roman_numerals(floor(Braak)))),
+         bScore = get_bScore(Braak),
          cohort = dataContributionGroup)
 
-print_unique_column_vals(meta_new, c("ageDeath", "pmi"))
-print_columns_with_nas(meta_new)
+print_qc(meta_new)
 
 write.csv(meta_new, file.path("data", "output", 
                               str_replace(meta_file$name, ".csv", "_harmonized.csv")))
@@ -310,34 +337,36 @@ colnames(meta)
 
 setdiff(expectedColumns, colnames(meta))
 
-print_unique_column_vals(meta, c("ageDeath", "pmi"))
-print_columns_with_nas(meta)
-
-tmp <- subset(meta, ageDeath != "90+")
-any(as.numeric(tmp$ageDeath) >= 90)
-tmp$ageDeath[tmp$ageDeath >= 90]
+print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
 
 meta_new <- meta %>%
   rename(isHispanic = ethnicity,
+         amyCerad = CERAD,
          dataContributionGroup = individualIdSource) %>% 
   mutate(pmi = pmi / 60,
          ageDeath = case_when(ageDeath == 90 ~ "90+",
-                              TRUE ~ ageDeath),
+                              .default = ageDeath),
          isHispanic = case_when(race == "Hispanic" ~ "True",
-                                TRUE ~ "Missing or unknown"),
+                                .default = "Missing or unknown"),
          race = case_when(race == "Black" ~ "Black or African American",
                           race == "Hispanic" ~ "Missing or unknown",
-                          TRUE ~ race),
+                          .default = race),
+         apoeGenotype = "Missing or unknown",
+         Braak = case_when(is.na(Braak) ~ "Missing or unknown",
+                           Braak == 0 ~ "None",
+                           .default = paste("Stage", to_Roman_numerals(Braak))),
+         bScore = get_bScore(Braak),
+         amyCerad = "TBD",
+         amyAny = "TBD",
          cohort = dataContributionGroup)
 
-print_unique_column_vals(meta_new, c("ageDeath", "pmi"))
-print_columns_with_nas(meta_new)
+print_qc(meta_new)
 
 write.csv(meta_new, file.path("data", "output", 
                               str_replace(meta_file$name, ".csv", "_harmonized.csv")))
 
 
-# GEN-B4
+# GEN-B4 - TODO this comes straight from Diverse Cohorts, consider using original DC file
 meta_file <- synGet(syn_ids[["GEN-B4"]], 
                     downloadLocation = file.path("data", "downloads"),
                     ifcollision = "overwrite.local")
@@ -347,25 +376,29 @@ colnames(meta)
 
 setdiff(expectedColumns, colnames(meta))
 
-print_unique_column_vals(meta, c("ageDeath", "PMI"))
-print_columns_with_nas(meta)
-
-tmp <- subset(meta, ageDeath != "90+" & ageDeath != "missing or unknown")
-any(as.numeric(tmp$ageDeath) >= 90)
+print_qc(meta, pmi_col = "PMI")
 
 meta_new <- meta %>%
   rename(pmi = PMI) %>% 
-  mutate(pmi = str_to_sentence(pmi),
-         ageDeath = str_to_sentence(ageDeath),
+  mutate(pmi = case_when(pmi == "missing or unknown" ~ NA,
+                         .default = as.numeric(pmi)),
+         ageDeath = case_when(ageDeath == "missing or unknown" ~ NA,
+                              .default = ageDeath),
          isHispanic = case_when(isHispanic == "TRUE" ~ "True",
                                 isHispanic == "FALSE" ~ "False",
-                                TRUE ~ str_to_sentence(isHispanic)),
+                                .default = str_to_sentence(isHispanic)),
          race = case_when(race == "Black" ~ "Black or African American",
                           race == "missing or unknown" ~ "Missing or unknown",
-                          TRUE ~ race))
+                          .default = race),
+         apoeGenotype = str_to_sentence(apoeGenotype),
+         amyCerad = case_when(amyCerad == "missing or unknown" ~ "Missing or unknown",
+                              .default = amyCerad),
+         amyAny = get_amyAny(amyCerad),
+         Braak = case_when(Braak == "missing or unknown" ~ "Missing or unknown",
+                           .default = Braak),
+         bScore = get_bScore(Braak))
 
-print_unique_column_vals(meta_new, c("ageDeath", "pmi"))
-print_columns_with_nas(meta_new)
+print_qc(meta_new)
 
 write.csv(meta_new, file.path("data", "output", 
                               str_replace(meta_file$name, ".csv", "_harmonized.csv")))
