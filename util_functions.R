@@ -1,4 +1,7 @@
-MISSING_STRING <- "missing or unknown"
+expectedColumns <- c("individualID", "dataContributionGroup", "cohort", "sex",
+                     "race", "isHispanic", "ageDeath", "pmi", "apoeGenotype",
+                     "apoe4Status", "amyCerad", "amyAny", "amyThal", "amyA",
+                     "Braak", "bScore")
 
 print_unique_column_vals <- function(df, numeric_columns) {
   for (cn in colnames(df)) {
@@ -84,57 +87,88 @@ print_qc <- function(df,
 }
 
 
-to_Roman_numerals <- function(num) {
+to_Braak_stage <- function(num, spec) {
   return(case_match(num,
-                    1 ~ "I",
-                    2 ~ "II",
-                    3 ~ "III",
-                    4 ~ "IV",
-                    5 ~ "V",
-                    6 ~ "VI",
-                    .default = MISSING_STRING))
+                    0 ~ spec$Braak$none,
+                    1 ~ spec$Braak$stage1,
+                    2 ~ spec$Braak$stage2,
+                    3 ~ spec$Braak$stage3,
+                    4 ~ spec$Braak$stage4,
+                    5 ~ spec$Braak$stage5,
+                    6 ~ spec$Braak$stage6,
+                    .default = spec$missing))
 }
 
-get_bScore <- function(Braak) {
-  return(case_when(Braak %in% c("None", MISSING_STRING) ~ Braak,
-                   Braak %in% c("Stage I", "Stage II") ~ "Stage I-II",
-                   Braak %in% c("Stage III", "Stage IV") ~ "Stage III-IV",
-                   Braak %in% c("Stage V", "Stage VI") ~ "Stage V-VI",
-                   .default = MISSING_STRING))
+get_bScore <- function(Braak, spec) {
+  return(case_when(Braak == spec$Braak$none ~ spec$bScore$none,
+                   Braak %in% c(spec$Braak$stage1, spec$Braak$stage2) ~ spec$bScore$stage1_2,
+                   Braak %in% c(spec$Braak$stage3, spec$Braak$stage4) ~ spec$bScore$stage3_4,
+                   Braak %in% c(spec$Braak$stage5, spec$Braak$stage6) ~ spec$bScore$stage5_6,
+                   .default = spec$missing))
 }
 
-get_amyAny <- function(amyCerad) {
-  return(case_when(amyCerad == "None/No AD/C0" ~ "0",
-                   amyCerad == MISSING_STRING ~ MISSING_STRING,
-                   .default = "1"))
+get_amyAny <- function(amyCerad, spec) {
+  return(case_when(amyCerad == spec$amyCerad$none ~ spec$amyAny$zero,
+                   amyCerad %in% c(spec$amyCerad$sparse,
+                                   spec$amyCerad$moderate,
+                                   spec$amyCerad$frequent) ~ spec$amyAny$one,
+                   .default = spec$missing))
 }
 
-get_amyA <- function(amyThal) {
-  return(case_when(amyThal %in% c("None", MISSING_STRING) ~ amyThal,
-                   amyThal %in% c("Phase 1", "Phase 2") ~ "Thal Phase 1 or 2",
-                   amyThal == "Phase 3" ~ "Thal Phase 3",
-                   amyThal %in% c("Phase 4", "Phase 5") ~ "Thal Phase 4 or 5",
-                   .default = MISSING_STRING))
+get_amyA <- function(amyThal, spec) {
+  return(case_when(amyThal == spec$amyThal$none ~ spec$amyA$none,
+                   amyThal %in% c(spec$amyThal$phase1,
+                                  spec$amyThal$phase2) ~ spec$amyA$phase1_2,
+                   amyThal == spec$amyThal$phase3 ~ spec$amyA$phase3,
+                   amyThal %in% c(spec$amyThal$phase4,
+                                  spec$amyThal$phase5) ~ spec$amyA$phase4_5,
+                   .default = spec$missing))
 }
 
-get_apoe4Status <- function(apoeGenotype) {
-  return(case_when(str_detect(apoeGenotype, "4") ~ "Yes",
-                   apoeGenotype == MISSING_STRING ~ MISSING_STRING,
-                   .default = "No"))
+get_apoe4Status <- function(apoeGenotype, spec) {
+  return(case_when(apoeGenotype %in% c(spec$apoeGenotype$e2e4,
+                                       spec$apoeGenotype$e3e4,
+                                       spec$apoeGenotype$e4e4) ~ spec$apoe4Status$e4yes,
+                   apoeGenotype %in% c(spec$apoeGenotype$e2e2,
+                                       spec$apoeGenotype$e2e3,
+                                       spec$apoeGenotype$e3e3) ~ spec$apoe4Status$e4no,
+                   .default = spec$missing))
 }
 
-censor_ages <- function(ages) {
-  return(case_when(ages %in% c("90+", "90_or_over", "89+") ~ "90+",
+censor_ages <- function(ages, spec) {
+  return(case_when(ages %in% c("90+", "90_or_over", "89+") ~ spec$over90,
                    ages == "" ~ NA,
-                   ages >= 90 ~ "90+",
+                   ages >= 90 ~ spec$over90,
                    ages < 90 ~ as.character(ages),
                    .default = NA))
 }
 
 
 write_metadata <- function(metadata, filename) {
-  write.csv(metadata,
-            file.path("data", "output",
-                      str_replace(filename, ".csv", "_harmonized.csv")),
+  # Put quotes around values with commas
+  for (column in colnames(metadata)) {
+    if (is.character(metadata[, column])) {
+      commas <- grepl(",", metadata[, column])
+      metadata[commas, column] <- paste0("\"", metadata[commas, column], "\"")
+    }
+  }
+
+  new_filename <- file.path("data", "output",
+                            str_replace(filename, ".csv", "_harmonized.csv"))
+  write.csv(metadata, new_filename,
             row.names = FALSE, quote = FALSE)
+
+  return(new_filename)
+}
+
+synapse_upload <- function(filename, folder_id) {
+  syn_file <- File(filename, parent = folder_id)
+  syn_file <- synStore(syn_file, forceVersion = FALSE)
+  return(syn_file$id)
+}
+
+synapse_download <- function(syn_id) {
+  synGet(syn_id,
+         downloadLocation = file.path("data", "downloads"),
+         ifcollision = "overwrite.local")
 }

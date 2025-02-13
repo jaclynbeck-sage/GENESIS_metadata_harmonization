@@ -1,0 +1,69 @@
+default:
+  missing: "missing or unknown"
+  over90: "90+"
+
+  sex:
+    female: "female"
+    male: "male"
+
+  race:
+    Amer_Ind: "American Indian or Alaska Native"
+    Asian: "Asian"
+    Black: "Black or African American"
+    White: "White"
+    other: "other"
+
+  isHispanic:
+    hisp_true: "True"
+    hisp_false: "False"
+
+  apoeGenotype:
+    e2e2: "22"
+    e2e3: "23"
+    e2e4: "24"
+    e3e3: "33"
+    e3e4: "34"
+    e4e4: "44"
+
+  apoe4Status:
+    e4yes: "yes"
+    e4no: "no"
+
+  amyCerad:
+    none: "None/No AD/C0"
+    sparse: "Sparse/Possible/C1"
+    moderate: "Moderate/Probable/C2"
+    frequent: "Frequent/Definite/C3"
+
+  amyAny:
+    one: "1"
+    zero: "0"
+
+  amyThal:
+    none: "None"
+    phase1: "Phase 1"
+    phase2: "Phase 2"
+    phase3: "Phase 3"
+    phase4: "Phase 4"
+    phase5: "Phase 5"
+
+  amyA:
+    none: "None"
+    phase1_2: "Thal Phase 1 or 2"
+    phase3: "Thal Phase 3"
+    phase4_5: "Thal Phase 4 or 5"
+
+  Braak:
+    none: "None"
+    stage1: "Stage I"
+    stage2: "Stage II"
+    stage3: "Stage III"
+    stage4: "Stage IV"
+    stage5: "Stage V"
+    stage6: "Stage VI"
+
+  bScore:
+    none: "None"
+    stage1_2: "Braak Stage I-II"
+    stage3_4: "Braak Stage III-IV"
+    stage5_6: "Braak Stage V-VI"
