@@ -148,7 +148,8 @@ write_metadata <- function(metadata, filename) {
   # Put quotes around values with commas
   for (column in colnames(metadata)) {
     if (is.character(metadata[, column])) {
-      commas <- grepl(",", metadata[, column])
+      # Columns that contain commas and aren't already escaped with quotes
+      commas <- grepl(",", metadata[, column]) & !grepl("\"", metadata[, column])
       metadata[commas, column] <- paste0("\"", metadata[commas, column], "\"")
     }
   }
