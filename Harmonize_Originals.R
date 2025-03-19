@@ -6,12 +6,13 @@ library(readxl)
 
 spec <- config::get(file = "GENESIS_harmonization.yml")
 source("util_functions.R")
+source("dataset_specific_functions.R")
 
-syn_ids <- list("Diverse_Cohorts" = "syn51757646",
-                "MayoRNAseq" = "syn23277389",
-                "MSBB" = "syn6101474",
-                "ROSMAP" = "syn3191087",
-                "SEA-AD" = "syn31149116")
+syn_ids <- list("Diverse_Cohorts" = "syn51757646.20",
+                "MayoRNAseq" = "syn23277389.7",
+                "MSBB" = "syn6101474.9",
+                "ROSMAP" = "syn3191087.11",
+                "SEA-AD" = "syn31149116.7")
 
 harmonized_files <- c()
 
@@ -146,47 +147,7 @@ print_qc(meta,
          braak_col = "braaksc",
          cerad_col = "ceradsc")
 
-meta_new <- meta %>%
-  rename(isHispanic = spanish,
-         ageDeath = age_death,
-         sex = msex,
-         apoeGenotype = apoe_genotype,
-         amyCerad = ceradsc,
-         Braak = braaksc,
-         cohort = Study) %>%
-  mutate(
-    sex = case_when(sex == 1 ~ spec$sex$male,
-                    sex == 0 ~ spec$sex$female,
-                    is.na(sex) ~ spec$missing),
-    ageDeath = censor_ages(ageDeath, spec),
-    race = case_when(is.na(race) ~ spec$missing,
-                     race == 1 ~ spec$race$White,
-                     race == 2 ~ spec$race$Black,
-                     race == 3 ~ spec$race$Amer_Ind,
-                     race == 4 ~ spec$race$other, # Hawaiian / Pacific Islanders
-                     race == 5 ~ spec$race$Asian,
-                     race == 6 ~ spec$race$other,
-                     race == 7 ~ spec$missing),
-    isHispanic = case_when(isHispanic == 1 ~ spec$isHispanic$hisp_true,
-                           isHispanic == 2 ~ spec$isHispanic$hisp_false,
-                           is.na(isHispanic) ~ spec$missing),
-    apoeGenotype = case_when(is.na(apoeGenotype) ~ spec$missing,
-                             .default = as.character(apoeGenotype)),
-    apoe4Status = get_apoe4Status(apoeGenotype, spec),
-    Braak = case_when(is.na(Braak) ~ spec$missing,
-                      Braak >= 0 ~ to_Braak_stage(Braak, spec),
-                      .default = as.character(Braak)),
-    bScore = get_bScore(Braak, spec),
-    amyCerad = case_when(amyCerad == 1 ~ spec$amyCerad$frequent,
-                         amyCerad == 2 ~ spec$amyCerad$moderate,
-                         amyCerad == 3 ~ spec$amyCerad$sparse,
-                         amyCerad == 4 ~ spec$amyCerad$none,
-                         is.na(amyCerad) ~ spec$missing),
-    amyAny = get_amyAny(amyCerad, spec),
-    amyThal = spec$missing,
-    amyA = spec$missing,
-    dataContributionGroup = "Rush"
-  )
+meta_new <- harmonize_ROSMAP(meta, spec)
 
 print_qc(meta_new)
 
@@ -212,19 +173,7 @@ colnames(meta)
 
 print_qc(meta, pmi_col = "PMI")
 
-meta_new <- meta %>%
-  rename(pmi = PMI) %>%
-  mutate(
-    ageDeath = censor_ages(ageDeath, spec),
-    pmi = case_when(pmi == spec$missing ~ NA,
-                    .default = pmi),
-    isHispanic = case_when(isHispanic == "TRUE" ~ spec$isHispanic$hisp_true,
-                           isHispanic == "FALSE" ~ spec$isHispanic$hisp_false,
-                           .default = isHispanic),
-    race = case_when(race == "Black" ~ spec$race$Black,
-                     .default = race),
-    apoe4Status = get_apoe4Status(apoeGenotype, spec)
-  )
+meta_new <- harmonize_Diverse_Cohorts(meta, spec)
 
 print_qc(meta_new)
 
@@ -247,56 +196,18 @@ download.file("https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-med
 
 meta <- read_xlsx(meta_file$path)
 meta_sea_ad <- read_xlsx(sea_ad_file)
-colnames(meta_sea_ad) <- make.names(colnames(meta_sea_ad), unique = TRUE)
 
 colnames(meta)
 colnames(meta_sea_ad)
 
-# Keep only the Hispanic/Latino column and IDs
-meta_sea_ad <- meta_sea_ad %>%
-  select(Donor.ID, Hispanic.Latino)
-
-meta <- merge(meta, meta_sea_ad,
-              by.x = "individualID",
-              by.y = "Donor.ID",
-              all = TRUE)
-
 print_qc(meta,
-         isHispanic_col = "Hispanic.Latino",
          cerad_col = "CERAD",
          thal_col = "Thal phase")
 
-meta_new <- meta %>%
-  rename(isHispanic = Hispanic.Latino,
-         amyCerad = CERAD,
-         amyThal = "Thal phase") %>%
-  mutate(
-    ageDeath = censor_ages(ageDeath, spec),
-    isHispanic = case_when(isHispanic == "No" ~ spec$isHispanic$hisp_false,
-                           isHispanic == "Yes" ~ spec$isHispanic$hisp_true,
-                           .default = spec$missing),
-    race = case_when(race == "Other" ~ spec$race$other,
-                     grepl("American Indian", race) ~ spec$race$Amer_Ind,
-                     is.na(race) ~ spec$missing,
-                     .default = race),
-    apoeGenotype = case_when(is.na(apoeGenotype) ~ spec$missing,
-                             .default = as.character(apoeGenotype)),
-    apoe4Status = get_apoe4Status(apoeGenotype, spec),
-    amyCerad = case_when(amyCerad == 0 ~ spec$amyCerad$none,
-                         amyCerad == 1 ~ spec$amyCerad$sparse,
-                         amyCerad == 2 ~ spec$amyCerad$moderate,
-                         amyCerad == 3 ~ spec$amyCerad$frequent,
-                         .default = spec$missing),
-    amyAny = get_amyAny(amyCerad, spec),
-    amyThal = case_when(is.na(amyThal) ~ spec$missing,
-                        amyThal == "Thal 0" ~ spec$amyThal$none,
-                        .default = str_replace(amyThal, "Thal", "Phase")),
-    amyA = get_amyA(amyThal, spec),
-    Braak = case_when(is.na(Braak) ~ spec$missing,
-                      .default = to_Braak_stage(Braak, spec)),
-    bScore = get_bScore(Braak, spec),
-    cohort = "SEA-AD",
-    dataContributionGroup = "Allen Institute")
+print_qc(meta_sea_ad,
+         isHispanic_col = "Hispanic/Latino")
+
+meta_new <- harmonize_SEA_AD(meta, meta_sea_ad, spec)
 
 print_qc(meta_new)
 

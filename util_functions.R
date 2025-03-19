@@ -71,18 +71,52 @@ print_qc <- function(df,
     }
   }
 
-  cat("Age check:\n")
-  # "89+" applies to NPS-AD only, all other studies use "90+" or "90_or_over"
-  ages_remove <- c("90+", "89+", "90_or_over", "Missing or unknown", "missing or unknown")
-  tmp <- subset(df, !(df[, ageDeath_col] %in% ages_remove)) %>%
-    mutate(ageDeath = as.numeric(.data[[ageDeath_col]])) %>%
-    subset(ageDeath >= 90)
+  if (ageDeath_col %in% colnames(df)) {
+    cat("Age check:\n")
+    # "89+" applies to NPS-AD only, all other studies use "90+" or "90_or_over"
+    ages_remove <- c("90+", "89+", "90_or_over", "Missing or unknown", "missing or unknown")
+    tmp <- subset(df, !(df[, ageDeath_col] %in% ages_remove)) %>%
+      mutate(ageDeath = suppressWarnings(as.numeric(.data[[ageDeath_col]]))) %>%
+      subset(ageDeath >= 90)
 
-  cat(ageDeath_col, "has", nrow(tmp), "uncensored ages")
-  if (nrow(tmp) > 0) {
-    cat(":", tmp$ageDeath, "\n")
-  } else {
-    cat("\n")
+    cat(ageDeath_col, "has", nrow(tmp), "uncensored ages.\n")
+  }
+}
+
+
+validate_values <- function(metadata, spec, verbose = TRUE) {
+  # ageDeath should have only NA, numbers, or "90+". No numbers should be above
+  # 89.
+  ageDeath <- na.omit(metadata$ageDeath) %>%
+    setdiff(spec$over90) %>%
+    as.numeric()
+
+  if (any(ageDeath >= 90)) {
+    cat("X  ageDeath has uncensored ages above 90.\n")
+  } else if (verbose) {
+    cat("OK ageDeath\n")
+  }
+
+  # PMI should have only NA or numbers
+  pmi <- na.omit(metadata$pmi)
+  if (length(pmi) > 0 && !is.numeric(pmi)) {
+    cat("X  pmi is not numeric\n")
+  } else if (verbose) {
+    cat("OK pmi\n")
+  }
+
+  # Other columns should have only string values that exist in the dictionary
+  cols_check <- setdiff(expectedColumns, c("individualID", "ageDeath", "pmi"))
+
+  for (col_name in cols_check) {
+    values <- metadata[, col_name]
+    expected <- c(spec$missing, unlist(spec[[col_name]]))
+    if (!all(values %in% expected)) {
+      cat("X ", col_name, "has unexpected values:",
+          paste(setdiff(values, expected), collapse = ", "), "\n")
+    } else if (verbose) {
+      cat("OK", col_name, "\n")
+    }
   }
 }
 
@@ -135,12 +169,14 @@ get_apoe4Status <- function(apoeGenotype, spec) {
                    .default = spec$missing))
 }
 
+
 censor_ages <- function(ages, spec) {
   return(case_when(ages %in% c("90+", "90_or_over", "89+") ~ spec$over90,
                    ages == "" ~ NA,
-                   ages >= 90 ~ spec$over90,
-                   ages < 90 ~ as.character(ages),
-                   .default = NA))
+                   ages == spec$missing ~ NA,
+                   suppressWarnings(as.numeric(ages)) >= 90 ~ spec$over90,
+                   suppressWarnings(as.numeric(ages)) < 90 ~ as.character(ages),
+                   .default = ages))
 }
 
 
