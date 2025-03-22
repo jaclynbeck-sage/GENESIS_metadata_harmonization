@@ -192,8 +192,10 @@ validate_values(meta_all, spec)
 # to the same individual
 dupe_ids <- meta_all |>
   select(individualID, dataContributionGroup) |>
-  mutate(group_id = paste(individualID, dataContributionGroup),
-         duplicate = duplicated(group_id)) |>
+  mutate(
+    group_id = paste(individualID, dataContributionGroup),
+    duplicate = duplicated(group_id)
+  ) |>
   subset(duplicate == TRUE) |>
   distinct()
 
@@ -211,13 +213,13 @@ for (row_id in 1:nrow(dupe_ids)) {
   # This will be altered to resolve duplication, and will get added back to the
   # meta_all data frame
   meta_tmp <- subset(meta_all, individualID == ind_id &
-                       dataContributionGroup == dupe_ids$dataContributionGroup[row_id])
+    dataContributionGroup == dupe_ids$dataContributionGroup[row_id])
 
   for (col_name in expectedColumns) {
     unique_vals <- unique(meta_tmp[, col_name])
 
     if (length(unique_vals) > 1) {
-      #cat(ind_id, col_name, "[", paste(unique_vals, collapse = ", "), "]\n")
+      # cat(ind_id, col_name, "[", paste(unique_vals, collapse = ", "), "]\n")
 
       # Use most precise ageDeath or pmi value
       if (col_name %in% c("ageDeath", "pmi")) {
@@ -230,8 +232,10 @@ for (row_id in 1:nrow(dupe_ids)) {
         # Clinic" in the original Mayo metadata or "Banner" in Diverse Cohorts,
         # but we don't need to change this in either metadata file or print it
         # out.
-        is_mayo_banner <- identical(sort(unique_vals),
-                                    c("Banner", "Mayo Clinic"))
+        is_mayo_banner <- identical(
+          sort(unique_vals),
+          c("Banner", "Mayo Clinic")
+        )
         if (!is_mayo_banner) {
           cat(ind_id, col_name, "[", paste(unique_vals, collapse = ", "), "]\n")
         }
@@ -279,8 +283,12 @@ new_files <- lapply(meta_list, function(meta_old) {
     mutate(individualID = original_individualID) |>
     select(-source_file, -original_individualID)
 
-  new_file <- str_replace(unique(meta_old$source_file), ".csv",
-                          "_deduplicated.csv")
-  write.csv(meta_new, new_file)
+  new_file <- str_replace(
+    basename(unique(meta_old$source_file)),
+    "_harmonized.csv",
+    ".csv"
+  )
+
+  write_metadata(meta_new, new_file)
   return(new_file)
 })

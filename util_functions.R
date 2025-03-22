@@ -62,11 +62,11 @@ print_qc <- function(df,
   for (col_name in setdiff(all_cols, c(ageDeath_col, pmi_col))) {
     if (col_name %in% colnames(df)) {
       cat(col_name, "values:\n")
-      tmp <- df %>%
-        group_by_at(col_name) %>%
-        count() %>%
-        ungroup() %>%
-        mutate_if(is.character, ~ paste0("\"", .x, "\"")) %>%
+      tmp <- df |>
+        group_by_at(col_name) |>
+        count() |>
+        ungroup() |>
+        mutate_if(is.character, ~ paste0("\"", .x, "\"")) |>
         data.frame()
 
       print(tmp)
@@ -78,8 +78,8 @@ print_qc <- function(df,
     cat("Age check:\n")
     # "89+" applies to NPS-AD only, all other studies use "90+" or "90_or_over"
     ages_remove <- c("90+", "89+", "90_or_over", "Missing or unknown", "missing or unknown")
-    tmp <- subset(df, !(df[, ageDeath_col] %in% ages_remove)) %>%
-      mutate(ageDeath = suppressWarnings(as.numeric(.data[[ageDeath_col]]))) %>%
+    tmp <- subset(df, !(df[, ageDeath_col] %in% ages_remove)) |>
+      mutate(ageDeath = suppressWarnings(as.numeric(.data[[ageDeath_col]]))) |>
       subset(ageDeath >= 90)
 
     cat(ageDeath_col, "has", nrow(tmp), "uncensored ages.\n")
@@ -90,12 +90,21 @@ print_qc <- function(df,
 validate_values <- function(metadata, spec, verbose = TRUE) {
   # ageDeath should have only NA, numbers, or "90+". No numbers should be above
   # 89.
-  ageDeath <- na.omit(metadata$ageDeath) %>%
-    setdiff(spec$over90) %>%
+  ageDeath <- na.omit(metadata$ageDeath) |>
+    setdiff(spec$over90) |>
     as.numeric()
 
-  if (any(ageDeath >= 90)) {
+  if (any(ageDeath >= 90, na.rm = TRUE)) {
     cat("X  ageDeath has uncensored ages above 90.\n")
+
+  } else if (any(is.na(ageDeath))) {
+    # NAs introduced by coercion to numeric, warn about initial value
+    nas <- which(is.na(ageDeath))
+    tmp <- na.omit(metadata$ageDeath) |>
+      setdiff(spec$over90)
+    cat("X  ageDeath has invalid age values:",
+        paste(tmp[nas], collapse = ", "), "\n")
+
   } else if (verbose) {
     cat("OK ageDeath\n")
   }
