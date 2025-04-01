@@ -32,6 +32,8 @@ manifest <- c()
 
 synLogin()
 
+harmonized_baseline <- readRDS(file.path("data", "tmp", "harmonized_originals.rds"))
+
 
 # GEN-A1 -----------------------------------------------------------------------
 # Has sample overlap with MSBB, ROSMAP, and Diverse Cohorts
@@ -162,40 +164,7 @@ colnames(meta)
 
 print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
 
-meta_new <- meta |>
-  rename(
-    isHispanic = ethnicity,
-    amyCerad = CERAD,
-    cohort = individualIdSource
-  ) |>
-  mutate(
-    ageDeath = censor_ages(ageDeath, spec),
-    race = spec$race$White,
-    isHispanic = spec$isHispanic$hisp_false,
-    apoeGenotype = as.character(apoeGenotype),
-    apoe4Status = get_apoe4Status(apoeGenotype, spec),
-    Braak = to_Braak_stage(Braak, spec),
-    bScore = get_bScore(Braak, spec),
-    amyCerad = case_match(amyCerad, # TODO this is just a guess
-      1 ~ spec$amyCerad$none,
-      2 ~ spec$amyCerad$sparse,
-      4 ~ spec$amyCerad$frequent,
-      NA ~ spec$missing,
-      .default = as.character(amyCerad)
-    ),
-    amyAny = get_amyAny(amyCerad, spec),
-    amyThal = spec$missing,
-    amyA = spec$missing,
-    cohort = case_match(cohort,
-      NA ~ spec$cohort$smri,
-      .default = spec$cohort$banner
-    ),
-    dataContributionGroup = case_match(cohort,
-      spec$cohort$smri ~ spec$dataContributionGroup$stanley,
-      .default = spec$dataContributionGroup$banner
-    )
-  )
-
+meta_new <- harmonize_SMIB_AD(meta, spec)
 
 print_qc(meta_new)
 validate_values(meta_new, spec)
@@ -224,34 +193,7 @@ colnames(meta)
 
 print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
 
-meta_new <- meta |>
-  rename(
-    isHispanic = ethnicity,
-    amyCerad = CERAD,
-    cohort = individualIdSource
-  ) |>
-  mutate(
-    race = str_trim(race),
-    isHispanic = str_trim(isHispanic),
-    isHispanic = case_match(isHispanic,
-      "Hispanic or Latino" ~ spec$isHispanic$hisp_true,
-      "Not Hispanic or Latino" ~ spec$isHispanic$hisp_false,
-      "Middle Eastern" ~ spec$isHispanic$hisp_false,
-      .default = isHispanic
-    ),
-    apoeGenotype = case_match(apoeGenotype,
-      NA ~ spec$missing,
-      .default = as.character(apoeGenotype)
-    ),
-    apoe4Status = get_apoe4Status(apoeGenotype, spec),
-    amyCerad = spec$missing,
-    amyAny = spec$missing,
-    amyThal = spec$missing,
-    amyA = spec$missing,
-    Braak = spec$missing,
-    bScore = spec$missing,
-    dataContributionGroup = spec$dataContributionGroup$mayo
-  )
+meta_new <- harmonize_MCMPS(meta, spec)
 
 print_qc(meta_new)
 validate_values(meta_new, spec)
@@ -271,9 +213,8 @@ manifest <- rbind(
 # GEN-A11 ----------------------------------------------------------------------
 
 # Has some sample overlap with AMP-AD 1.0 Mayo metadata and Diverse Cohorts
-# metadata. All overlapping fields either agree or this study fills in missing
-# information, so no data adjustments are needed for this data set. We could
-# optionally pull in missing columns like Thal from 1.0 or DC metadata.
+# metadata. After harmonization we pull in any missing values from 1.0 and
+# Diverse Cohorts metadata.
 
 meta_file <- synapse_download(syn_ids[["GEN-A11"]])
 meta <- read.csv(meta_file$path)
@@ -282,25 +223,7 @@ colnames(meta)
 
 print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
 
-meta_new <- meta |>
-  rename(
-    isHispanic = ethnicity,
-    amyCerad = CERAD
-  ) |>
-  mutate(
-    ageDeath = censor_ages(ageDeath, spec),
-    isHispanic = spec$isHispanic$hisp_false,
-    apoeGenotype = as.character(apoeGenotype),
-    apoe4Status = get_apoe4Status(apoeGenotype, spec),
-    amyCerad = spec$missing,
-    amyAny = spec$missing,
-    amyThal = spec$missing,
-    amyA = spec$missing,
-    Braak = to_Braak_stage(floor(Braak), spec),
-    bScore = get_bScore(Braak, spec),
-    dataContributionGroup = spec$dataContributionGroup$mayo,
-    cohort = spec$cohort$mayo
-  )
+meta_new <- harmonize_MC_snRNA(meta, harmonized_baseline, spec)
 
 print_qc(meta_new)
 validate_values(meta_new, spec)
@@ -330,36 +253,8 @@ colnames(meta)
 
 print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD", thal_col = "Thal")
 
-meta_new <- meta |>
-  rename(
-    isHispanic = ethnicity,
-    amyCerad = CERAD,
-    amyThal = Thal
-  ) |>
-  mutate(
-    ageDeath = censor_ages(ageDeath, spec),
-    isHispanic = spec$missing,
-    apoeGenotype = case_match(apoeGenotype,
-      NA ~ spec$missing,
-      .default = as.character(apoeGenotype)
-    ),
-    apoe4Status = get_apoe4Status(apoeGenotype, spec),
-    amyCerad = spec$missing,
-    amyAny = spec$missing,
-    amyThal = case_match(amyThal,
-      0 ~ spec$amyThal$none,
-      1 ~ spec$amyThal$phase1,
-      NA ~ spec$missing,
-      .default = as.character(amyThal)
-    ),
-    amyA = get_amyA(amyThal, spec),
-    Braak = to_Braak_stage(floor(Braak), spec),
-    bScore = get_bScore(Braak, spec),
-    dataContributionGroup = spec$dataContributionGroup$mayo,
-    cohort = spec$cohort$mayo
-  )
+meta_new <- harmonize_MC_BrAD(meta, harmonized_baseline, spec)
 
-# TODO pull in missing data from 1.0 data
 print_qc(meta_new)
 validate_values(meta_new, spec)
 
@@ -382,6 +277,7 @@ manifest <- rbind(
 
 # TODO unclear how they encode CERAD and I can't guess based on correlation with
 # Braak.
+# TODO we might not be using this data set
 
 meta_file <- synapse_download(syn_ids[["GEN-A14"]])
 meta <- read.csv(meta_file$path)
@@ -481,5 +377,5 @@ validate_values(df_all, spec)
 #  group_by(individualID) |>
 #  mutate(genesis_study = paste(sort(genesis_study), collapse = "; "))
 
-new_file <- write_metadata(df_all, "metadata_combined.csv")
+new_file <- write_metadata(df_all, "GENESIS_metadata_combined.csv")
 synapse_upload(new_file, UPLOAD_SYNID)

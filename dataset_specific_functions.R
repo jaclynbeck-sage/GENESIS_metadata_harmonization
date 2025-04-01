@@ -461,3 +461,274 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
       dataContributionGroup = spec$dataContributionGroup$allen_institute
     )
 }
+
+
+# New data sets ----------------------------------------------------------------
+
+# Harmonize SMIB-AD / GEN-A9 metadata
+#
+# Modifies the SMIB-AD individual metadata file to conform to the GENESIS data
+# dictionary. Source metadata file: syn22432749 (version 1) on Synapse. Note:
+# CERAD values are coded using ROSMAP's system.
+#
+# Modifications needed for version 1:
+#   * Rename columns:
+#     * `ethnicity` => `isHispanic`
+#     * `CERAD` => `amyCerad`
+#   * Censor `ageDeath` values over 90
+#   * Change `race` values from "European" to "White"
+#   * Change `isHispanic` values from "European" to "False"
+#   * Convert Braak numerical values to Roman numerals
+#   * Convert `amyCerad` numerical values to values in data dictionary
+#   * Add `apoe4Status`, `amyAny`, `amyThal`, `amyA`, and `bScore` columns
+#   * Add a `cohort` column with either "SMRI" or "Banner"
+#   * Add a `dataContributionGroup` column with values for Stanley and Banner
+#
+# Arguments:
+#   metadata - a `data.frame` of metadata from the source metadata file. Columns
+#     are variables and rows are individuals.
+#   spec - a `config` object describing the standardized values for each field,
+#     as defined by this project's `GENESIS_harmonization.yml` file
+#
+# Returns:
+#   a `data.frame` with all relevant fields harmonized to the GENESIS data
+#   dictionary. Columns not defined in the data dictionary are left as-is.
+#
+harmonize_SMIB_AD <- function(metadata, spec) {
+  metadata |>
+    rename(
+      isHispanic = ethnicity,
+      amyCerad = CERAD
+    ) |>
+    mutate(
+      ageDeath = censor_ages(ageDeath, spec),
+      race = spec$race$White,
+      isHispanic = spec$isHispanic$hisp_false,
+      apoeGenotype = as.character(apoeGenotype),
+      apoe4Status = get_apoe4Status(apoeGenotype, spec),
+      Braak = to_Braak_stage(Braak, spec),
+      bScore = get_bScore(Braak, spec),
+      amyCerad = case_match(amyCerad,
+        1 ~ spec$amyCerad$none,
+        2 ~ spec$amyCerad$sparse,
+        4 ~ spec$amyCerad$frequent,
+        NA ~ spec$missing,
+        .default = as.character(amyCerad)
+      ),
+      amyAny = get_amyAny(amyCerad, spec),
+      amyThal = spec$missing,
+      amyA = spec$missing,
+      cohort = case_match(individualIdSource,
+        NA ~ spec$cohort$smri,
+        .default = spec$cohort$banner
+      ),
+      dataContributionGroup = case_match(cohort,
+        spec$cohort$smri ~ spec$dataContributionGroup$stanley,
+        .default = spec$dataContributionGroup$banner
+      )
+    )
+}
+
+
+# Harmonize MCMPS / GEN-A10 metadata
+#
+# Modifies the MCMPS individual metadata file to conform to the GENESIS data
+# dictionary. Source metadata file: syn25891193 (version 1) on Synapse. Note:
+# these samples come from living tissue and do not have a value for `ageDeath`
+# or `pmi`.
+#
+# Modifications needed for version 1:
+#   * Rename columns:
+#     * `ethnicity` => `isHispanic`
+#     * `CERAD` => `amyCerad`
+#   * Trim extra spaces from `race` values
+#   * Trim extra spaces from `isHispanic` values and convert to True/False
+#   * Replace `NA` values with "missing or unknown" in the `apoeGenotype`,
+#     `amyCerad`, and `Braak` columns
+#   * Add `apoe4Status`, `amyAny`, `amyThal`, `amyA`, and `bScore` columns
+#   * Add a `cohort` column containing "Mayo Clinic"
+#   * Add a `dataContributionGroup` column containing "Mayo"
+#
+# Arguments:
+#   metadata - a `data.frame` of metadata from the source metadata file. Columns
+#     are variables and rows are individuals.
+#   spec - a `config` object describing the standardized values for each field,
+#     as defined by this project's `GENESIS_harmonization.yml` file
+#
+# Returns:
+#   a `data.frame` with all relevant fields harmonized to the GENESIS data
+#   dictionary. Columns not defined in the data dictionary are left as-is.
+#
+harmonize_MCMPS <- function(metadata, spec) {
+  metadata |>
+    rename(
+      isHispanic = ethnicity,
+      amyCerad = CERAD
+    ) |>
+    mutate(
+      race = str_trim(race),
+      isHispanic = str_trim(isHispanic),
+      isHispanic = case_match(isHispanic,
+        "Hispanic or Latino" ~ spec$isHispanic$hisp_true,
+        "Not Hispanic or Latino" ~ spec$isHispanic$hisp_false,
+        "Middle Eastern" ~ spec$isHispanic$hisp_false,
+        .default = isHispanic
+      ),
+      apoeGenotype = case_match(apoeGenotype,
+        NA ~ spec$missing,
+        .default = as.character(apoeGenotype)
+      ),
+      apoe4Status = get_apoe4Status(apoeGenotype, spec),
+      amyCerad = spec$missing,
+      amyAny = spec$missing,
+      amyThal = spec$missing,
+      amyA = spec$missing,
+      Braak = spec$missing,
+      bScore = spec$missing,
+      cohort = spec$cohort$mayo,
+      dataContributionGroup = spec$dataContributionGroup$mayo
+    )
+}
+
+
+# Harmonize MC_snRNA / GEN-A11 metadata
+#
+# Modifies the MC_snRNA individual metadata file to conform to the GENESIS data
+# dictionary. Source metadata file: syn31563038 (version 1) on Synapse. This
+# data set has some sample overlap with AMP-AD 1.0 Mayo metadata and Diverse
+# Cohorts metadata. There are some missing values in this data set that exist in
+# these data sets, so we pull those values in.
+#
+# Modifications needed for version 1:
+#   * Rename columns:
+#     * `ethnicity` => `isHispanic`
+#     * `CERAD` => `amyCerad`
+#   * Change `ageDeath` values of "90_or_over" to "90+"
+#   * Change `isHispanic` values from "Caucasian" to "False"
+#   * Replace `NA` values with "missing or unknown" in the `amyCerad` column
+#   * Round numerical `Braak` values down and convert to Roman numerals
+#   * Add `apoe4Status`, `amyAny`, `amyThal`, `amyA`, and `bScore` columns
+#   * Add a `cohort` column containing "Mayo Clinic"
+#   * Add a `dataContributionGroup` column containing "Mayo"
+#
+# Arguments:
+#   metadata - a `data.frame` of metadata from the source metadata file. Columns
+#     are variables and rows are individuals.
+#   harmonized_baseline - a `data.frame` of de-duplicated and harmonized
+#     metadata from all AMP-AD 1.0 studies, Diverse Cohorts, and SEA-AD
+#   spec - a `config` object describing the standardized values for each field,
+#     as defined by this project's `GENESIS_harmonization.yml` file
+#
+# Returns:
+#   a `data.frame` with all relevant fields harmonized to the GENESIS data
+#   dictionary. Columns not defined in the data dictionary are left as-is.
+#
+harmonize_MC_snRNA <- function(metadata, harmonized_baseline, spec) {
+  meta_new <- metadata |>
+    rename(
+      isHispanic = ethnicity,
+      amyCerad = CERAD
+    ) |>
+    mutate(
+      ageDeath = censor_ages(ageDeath, spec),
+      isHispanic = spec$isHispanic$hisp_false,
+      apoeGenotype = as.character(apoeGenotype),
+      apoe4Status = get_apoe4Status(apoeGenotype, spec),
+      amyCerad = spec$missing,
+      amyAny = spec$missing,
+      amyThal = spec$missing,
+      amyA = spec$missing,
+      Braak = to_Braak_stage(floor(Braak), spec),
+      bScore = get_bScore(Braak, spec),
+      dataContributionGroup = spec$dataContributionGroup$mayo,
+      cohort = spec$cohort$mayo
+    )
+
+  # Pull missing information from AMP-AD 1.0 and Diverse Cohorts metadata
+  meta_new <- meta_new |>
+    mutate(source_file = "GEN-A11")
+
+  meta_new <- deduplicate_studies(list(harmonized_baseline, meta_new),
+                                  verbose = FALSE) |>
+    subset(source_file == "GEN-A11") |>
+    select(all_of(colnames(meta_new)), -source_file)
+
+  return(meta_new)
+}
+
+
+# Harmonize MC-BrAD / GEN-A12 metadata
+#
+# Modifies the MC-BrAD individual metadata file to conform to the GENESIS data
+# dictionary. Source metadata file: syn51401700 (version 2) on Synapse. This
+# data set has some sample overlap with AMP-AD 1.0 Mayo metadata and Diverse
+# Cohorts metadata. There are some missing values in this data set that exist in
+# these data sets, so we pull those values in.
+#
+# Modifications needed for version 2:
+#   * Rename columns:
+#     * `ethnicity` => `isHispanic`
+#     * `CERAD` => `amyCerad`
+#     * `Thal` => `amyThal`
+#   * Change `ageDeath` values of "90_or_over" to "90+"
+#   * Replace `NA` values with "missing or unknown" in the `isHispanic`,
+#   * `apoeGenotype`, `amyCerad`, and `amyThal` columns
+#   * Round numerical `Braak` values down and convert to Roman numerals
+#   * Convert `amyThal` values to conform to data dictionary
+#   * Add `apoe4Status`, `amyAny`, `amyA`, and `bScore` columns
+#   * Add a `cohort` column containing "Mayo Clinic"
+#   * Add a `dataContributionGroup` column containing "Mayo"
+#
+# Arguments:
+#   metadata - a `data.frame` of metadata from the source metadata file. Columns
+#     are variables and rows are individuals.
+#   harmonized_baseline - a `data.frame` of de-duplicated and harmonized
+#     metadata from all AMP-AD 1.0 studies, Diverse Cohorts, and SEA-AD
+#   spec - a `config` object describing the standardized values for each field,
+#     as defined by this project's `GENESIS_harmonization.yml` file
+#
+# Returns:
+#   a `data.frame` with all relevant fields harmonized to the GENESIS data
+#   dictionary. Columns not defined in the data dictionary are left as-is.
+#
+harmonize_MC_BrAD <- function(metadata, harmonized_baseline, spec) {
+  meta_new <- metadata |>
+    rename(
+      isHispanic = ethnicity,
+      amyCerad = CERAD,
+      amyThal = Thal
+    ) |>
+    mutate(
+      ageDeath = censor_ages(ageDeath, spec),
+      isHispanic = spec$missing,
+      apoeGenotype = case_match(apoeGenotype,
+        NA ~ spec$missing,
+        .default = as.character(apoeGenotype)
+      ),
+      apoe4Status = get_apoe4Status(apoeGenotype, spec),
+      amyCerad = spec$missing,
+      amyAny = spec$missing,
+      amyThal = case_match(amyThal,
+        0 ~ spec$amyThal$none,
+        1 ~ spec$amyThal$phase1,
+        NA ~ spec$missing,
+        .default = as.character(amyThal)
+      ),
+      amyA = get_amyA(amyThal, spec),
+      Braak = to_Braak_stage(floor(Braak), spec),
+      bScore = get_bScore(Braak, spec),
+      dataContributionGroup = spec$dataContributionGroup$mayo,
+      cohort = spec$cohort$mayo
+    )
+
+  # Pull missing information from AMP-AD 1.0 and Diverse Cohorts metadata
+  meta_new <- meta_new |>
+    mutate(source_file = "GEN-A12")
+
+  meta_new <- deduplicate_studies(list(harmonized_baseline, meta_new),
+                                  verbose = FALSE) |>
+    subset(source_file == "GEN-A12") |>
+    select(all_of(colnames(meta_new)), -source_file)
+
+  return(meta_new)
+}

@@ -181,6 +181,10 @@ meta_all <- deduplicate_studies(meta_list, verbose = FALSE)
 print_qc(meta_all)
 validate_values(meta_all, spec)
 
+# Save de-duplicated data frame for step 2
+saveRDS(meta_all, file.path("data", "tmp", "harmonized_originals.rds"))
+
+
 # Re-write de-duplicated metadata files ----------------------------------------
 
 # Use de-duplicated data but subset to only columns that exist in each
