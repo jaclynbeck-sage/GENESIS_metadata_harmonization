@@ -12,7 +12,7 @@ source("dataset_specific_functions.R")
 syn_ids <- list(
   "GEN-A1" = "syn55251012.4", # NPS-AD
   "ROSMAP" = "syn64759878.4", # Harmonized file, for GEN-A2, GEN-A8, GEN-A13, GEN-B6
-  "SEA-AD" = "syn64759879.4", # Harmonized file, for GEN-A4 and GEN-B5
+  "SEA-AD" = "syn31149116.7", # SEA-AD, for GEN-A4 and GEN-B5
   "GEN-A9" = "syn22432749.1", # SMIB-AD
   "GEN-A10" = "syn25891193.1", # MCMPS
   "GEN-A11" = "syn31563038.1", # MC_snRNA
@@ -135,14 +135,50 @@ manifest <- rbind(
 
 
 # GEN-A4, GEN-B5 ---------------------------------------------------------------
-# Uses harmonized SEA-AD metadata
+
+# Uses SEA-AD metadata. The version of SEA-AD that is on Synapse is missing
+# Hispanic/Latino information that is present in the version released by the
+# Allen Institute on brain-map.org. We use the version on Synapse but pull in
+# the missing information from the AI version.
+
+meta_file <- synapse_download(syn_ids[["SEA-AD"]])
+
+sea_ad_file <- file.path("data", "downloads", "sea-ad_cohort_donor_metadata_072524.xlsx")
+download.file("https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/b4/c7/b4c727e1-ede1-4c61-b2ee-bf1ae4a3ef68/sea-ad_cohort_donor_metadata_072524.xlsx",
+              destfile = sea_ad_file
+)
+
+meta <- read_xlsx(meta_file$path)
+meta_sea_ad <- read_xlsx(sea_ad_file)
+
+colnames(meta)
+colnames(meta_sea_ad)
+
+print_qc(meta,
+         cerad_col = "CERAD",
+         thal_col = "Thal phase"
+)
+
+print_qc(meta_sea_ad,
+         isHispanic_col = "Hispanic/Latino"
+)
+
+meta_new <- harmonize_SEA_AD(meta, meta_sea_ad, spec)
+
+print_qc(meta_new)
+validate_values(meta_new, spec)
+
+# Original file is an Excel file, change filename to CSV file
+file_write <- str_replace(meta_file$name, "xlsx", "csv")
+new_filename <- write_metadata(meta_new, file_write)
+new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
 
 manifest <- rbind(
   manifest,
   data.frame(
     GENESIS_study = c("GEN-A4", "GEN-B5"),
     ADKP_study = c("SEA-AD", "SEA-AD"),
-    metadata_synid = syn_ids[["SEA-AD"]]
+    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
   )
 )
 
