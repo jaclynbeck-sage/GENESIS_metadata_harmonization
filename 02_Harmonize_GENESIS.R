@@ -17,22 +17,20 @@ syn_ids <- list(
   "GEN-A10" = "syn25891193.1", # MCMPS
   "GEN-A11" = "syn31563038.1", # MC_snRNA
   "GEN-A12" = "syn51401700.2", # MC-BrAD
-  "GEN-A14" = "syn24610550.2", # HBI_scRNAseq
   "Diverse_Cohorts" = "syn64759872.4" # Harmonized file, for GEN-B4
   # "GEN-B1" = "TBD",
   # "GEN-B2" = "TBD",
   # "GEN-B3" = "TBD"
 )
 
+synLogin()
 check_new_versions(syn_ids)
 
 UPLOAD_SYNID <- "syn64759869"
 
 manifest <- c()
 
-synLogin()
-
-harmonized_baseline <- readRDS(file.path("data", "tmp", "harmonized_originals.rds"))
+harmonized_baseline <- readRDS(file.path("data", "tmp", "AMP1.0_DiverseCohorts_harmonized.rds"))
 
 
 # GEN-A1 -----------------------------------------------------------------------
@@ -145,7 +143,7 @@ meta_file <- synapse_download(syn_ids[["SEA-AD"]])
 
 sea_ad_file <- file.path("data", "downloads", "sea-ad_cohort_donor_metadata_072524.xlsx")
 download.file("https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/b4/c7/b4c727e1-ede1-4c61-b2ee-bf1ae4a3ef68/sea-ad_cohort_donor_metadata_072524.xlsx",
-              destfile = sea_ad_file
+  destfile = sea_ad_file
 )
 
 meta <- read_xlsx(meta_file$path)
@@ -154,14 +152,8 @@ meta_sea_ad <- read_xlsx(sea_ad_file)
 colnames(meta)
 colnames(meta_sea_ad)
 
-print_qc(meta,
-         cerad_col = "CERAD",
-         thal_col = "Thal phase"
-)
-
-print_qc(meta_sea_ad,
-         isHispanic_col = "Hispanic/Latino"
-)
+print_qc(meta, cerad_col = "CERAD", thal_col = "Thal phase")
+print_qc(meta_sea_ad, isHispanic_col = "Hispanic/Latino")
 
 meta_new <- harmonize_SEA_AD(meta, meta_sea_ad, spec)
 
@@ -196,6 +188,7 @@ manifest <- rbind(
 meta_file <- synapse_download(syn_ids[["GEN-A9"]])
 meta <- read.csv(meta_file$path)
 
+
 colnames(meta)
 
 print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
@@ -213,7 +206,8 @@ manifest <- rbind(
   data.frame(
     GENESIS_study = "GEN-A9",
     ADKP_study = "SMIB-AD",
-    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber))
+    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
+  )
 )
 
 
@@ -242,7 +236,8 @@ manifest <- rbind(
   data.frame(
     GENESIS_study = "GEN-A10",
     ADKP_study = "MCMPS",
-    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber))
+    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
+  )
 )
 
 
@@ -272,7 +267,8 @@ manifest <- rbind(
   data.frame(
     GENESIS_study = "GEN-A11",
     ADKP_study = "MC_snRNA",
-    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber))
+    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
+  )
 )
 
 
@@ -302,69 +298,8 @@ manifest <- rbind(
   data.frame(
     GENESIS_study = "GEN-A12",
     ADKP_study = "MC-BrAD",
-    metadata_synid = new_syn_id)
-)
-
-
-# GEN-A14 ----------------------------------------------------------------------
-
-# This study uses data from MSSM but there is no sample overlap with AMP-AD 1.0
-# MSBB or Diverse Cohorts data.
-
-# TODO unclear how they encode CERAD and I can't guess based on correlation with
-# Braak.
-# TODO we might not be using this data set
-
-meta_file <- synapse_download(syn_ids[["GEN-A14"]])
-meta <- read.csv(meta_file$path)
-
-colnames(meta)
-
-print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
-
-meta_new <- meta |>
-  rename(
-    isHispanic = ethnicity,
-    amyCerad = CERAD
-  ) |>
-  mutate(
-    pmi = pmi / 60,
-    ageDeath = censor_ages(ageDeath, spec),
-    # "Hispanic" status is encoded in the race column
-    isHispanic = case_match(race,
-      "Hispanic" ~ spec$isHispanic$hisp_true,
-      NA ~ spec$missing,
-      .default = isHispanic
-    ),
-    race = case_match(race,
-      "Black" ~ spec$race$Black,
-      "Hispanic" ~ spec$missing,
-      .default = race
-    ),
-    apoeGenotype = spec$missing,
-    apoe4Status = get_apoe4Status(apoeGenotype, spec),
-    Braak = to_Braak_stage(Braak, spec),
-    bScore = get_bScore(Braak, spec),
-    amyCerad = spec$missing, # TODO
-    amyAny = get_amyAny(amyCerad, spec),
-    amyThal = spec$missing,
-    amyA = spec$missing,
-    dataContributionGroup = spec$dataContributionGroup$mssm,
-    cohort = spec$cohort$msbb
+    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
   )
-
-print_qc(meta_new)
-validate_values(meta_new, spec)
-
-new_filename <- write_metadata(meta_new, meta_file$name)
-new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
-
-manifest <- rbind(
-  manifest,
-  data.frame(
-    GENESIS_study = "GEN-A14",
-    ADKP_study = "HBI_scRNAseq",
-    metadata_synid = new_syn_id)
 )
 
 
@@ -376,7 +311,8 @@ manifest <- rbind(
   data.frame(
     GENESIS_study = "GEN-B4",
     ADKP_study = "AMP-AD_DiverseCohorts",
-    metadata_synid = syn_ids[["Diverse_Cohorts"]])
+    metadata_synid = syn_ids[["Diverse_Cohorts"]]
+  )
 )
 
 

@@ -34,11 +34,10 @@ syn_ids <- list(
   "ROSMAP" = "syn3191087.11"
 )
 
+synLogin()
 check_new_versions(syn_ids)
 
 df_list <- list()
-
-synLogin()
 
 # MayoRNAseq -------------------------------------------------------------------
 
