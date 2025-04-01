@@ -74,7 +74,6 @@ validate_values <- function(metadata, spec, verbose = TRUE) {
 
   if (any(ageDeath >= 90, na.rm = TRUE)) {
     cat("X  ageDeath has uncensored ages above 90.\n")
-
   } else if (any(is.na(ageDeath))) {
     # NAs introduced by coercion to numeric, warn about initial value
     nas <- which(is.na(ageDeath))
@@ -169,9 +168,9 @@ get_bScore <- function(Braak, spec) {
 get_amyAny <- function(amyCerad, spec) {
   return(case_match(amyCerad,
     spec$amyCerad$none ~ spec$amyAny$zero,
-    c(spec$amyCerad$sparse,
-      spec$amyCerad$moderate,
-      spec$amyCerad$frequent) ~ spec$amyAny$one,
+    spec$amyCerad$sparse ~ spec$amyAny$one,
+    spec$amyCerad$moderate ~ spec$amyAny$one,
+    spec$amyCerad$frequent ~ spec$amyAny$one,
     NA ~ spec$missing,
     .default = as.character(amyCerad)
   ))
@@ -180,11 +179,9 @@ get_amyAny <- function(amyCerad, spec) {
 get_amyA <- function(amyThal, spec) {
   return(case_match(amyThal,
     spec$amyThal$none ~ spec$amyA$none,
-    c(spec$amyThal$phase1,
-      spec$amyThal$phase2) ~ spec$amyA$phase1_2,
+    c(spec$amyThal$phase1, spec$amyThal$phase2) ~ spec$amyA$phase1_2,
     spec$amyThal$phase3 ~ spec$amyA$phase3,
-    c(spec$amyThal$phase4,
-      spec$amyThal$phase5) ~ spec$amyA$phase4_5,
+    c(spec$amyThal$phase4, spec$amyThal$phase5) ~ spec$amyA$phase4_5,
     NA ~ spec$missing,
     .default = as.character(amyThal)
   ))
@@ -192,12 +189,16 @@ get_amyA <- function(amyThal, spec) {
 
 get_apoe4Status <- function(apoeGenotype, spec) {
   return(case_match(apoeGenotype,
-    c(spec$apoeGenotype$e2e4,
+    c(
+      spec$apoeGenotype$e2e4,
       spec$apoeGenotype$e3e4,
-      spec$apoeGenotype$e4e4) ~ spec$apoe4Status$e4yes,
-    c(spec$apoeGenotype$e2e2,
+      spec$apoeGenotype$e4e4
+    ) ~ spec$apoe4Status$e4yes,
+    c(
+      spec$apoeGenotype$e2e2,
       spec$apoeGenotype$e2e3,
-      spec$apoeGenotype$e3e3) ~ spec$apoe4Status$e4no,
+      spec$apoeGenotype$e3e3
+    ) ~ spec$apoe4Status$e4no,
     NA ~ spec$missing,
     .default = as.character(apoeGenotype)
   ))
@@ -281,4 +282,122 @@ check_new_versions <- function(syn_id_list) {
       }
     }
   }
+}
+
+
+deduplicate_studies <- function(df_list,
+                                include_cols = expectedColumns,
+                                exclude_cols = c(),
+                                verbose = TRUE) {
+  # Make sure certain fields in each data frame are of the same type
+  df_list <- lapply(df_list, function(df_item) {
+    df_item |>
+      mutate(
+        individualID = as.character(individualID),
+        apoeGenotype = as.character(apoeGenotype),
+        amyAny = as.character(amyAny),
+        # Special case: MSBB/MSSM samples were re-named for Diverse Cohorts, this
+        # makes them directly comparable
+        original_individualID = individualID,
+        individualID = str_replace(individualID, "AMPAD_MSSM_0+", ""),
+        individualID = case_when(
+          individualID == 29637 & dataContributionGroup == "MSSM" ~ "29637_MSSM",
+          individualID == 29582 & dataContributionGroup == "MSSM" ~ "29582_MSSM",
+          .default = as.character(individualID)
+        ),
+      )
+  })
+
+  meta_all <- purrr::list_rbind(df_list)
+  include_cols <- setdiff(include_cols, exclude_cols)
+
+  # This accounts for overlapping IDs between different studies that don't refer
+  # to the same individual
+  dupe_ids <- meta_all |>
+    select(individualID, dataContributionGroup) |>
+    mutate(
+      group_id = paste(individualID, dataContributionGroup),
+      duplicate = duplicated(group_id)
+    ) |>
+    subset(duplicate == TRUE) |>
+    distinct()
+
+  # For each ID that has duplicate rows, resolve duplicates:
+  #   1. For columns where some rows have NA and some have a unique non-NA value,
+  #      replace the NA value with that unique non-NA value.
+  #   2. For columns where some rows have "missing or unknown" and some have a
+  #      unique value other than that, replace "missing or unknown" with the
+  #      unique value.
+  #   3. For the ageDeath/pmi columns where rows disagree because of precision,
+  #      use the most precise value.
+  for (row_id in 1:nrow(dupe_ids)) {
+    ind_id <- dupe_ids$individualID[row_id]
+
+    # This will be altered to resolve duplication, and will get added back to the
+    # meta_all data frame
+    meta_tmp <- subset(meta_all, individualID == ind_id &
+      dataContributionGroup == dupe_ids$dataContributionGroup[row_id])
+
+    for (col_name in include_cols) {
+      unique_vals <- unique(meta_tmp[, col_name])
+
+      if (length(unique_vals) > 1) {
+        if (verbose) {
+          cat(ind_id, col_name, "[", paste(unique_vals, collapse = ", "), "]\n")
+        }
+
+        # Use most precise ageDeath or pmi value
+        if (col_name %in% c("ageDeath", "pmi")) {
+          n_decimals <- str_replace(as.character(unique_vals), ".*\\.", "") |>
+            nchar()
+          meta_tmp[, col_name] <- unique_vals[which.max(n_decimals)]
+        } else if (col_name == "cohort") {
+          # If there is more than one left over value, report it but don't try to
+          # resolve duplication. Special case: Mayo data may be labeled as "Mayo
+          # Clinic" in the original Mayo metadata or "Banner" in Diverse Cohorts,
+          # but we don't need to change this in either metadata file or print it
+          # out.
+          is_mayo_banner <- identical(
+            sort(unique_vals),
+            c("Banner", "Mayo Clinic")
+          )
+          if (!is_mayo_banner) {
+            cat(ind_id, col_name, "[", paste(unique_vals, collapse = ", "), "]\n")
+          }
+        } else {
+          # Remove NA and "missing or unknown" values to see what's left
+          leftover <- unique_vals[!is.na(unique_vals) & (unique_vals != spec$missing)]
+
+          if (length(leftover) == 1) {
+            # One unique left over value
+            meta_tmp[, col_name] <- leftover
+          } else if (length(leftover) == 0) {
+            # Nothing left, use "missing or unknown" if it's there, otherwise set
+            # to NA.
+            if (any(unique_vals == spec$missing)) {
+              meta_tmp[, col_name] <- spec$missing
+            } else {
+              meta_tmp[, col_name] <- NA
+            }
+          } else {
+            # If there is more than one left over value, report it but don't try
+            # to resolve duplication.
+            cat(ind_id, col_name, "[", paste(unique_vals, collapse = ", "), "]\n")
+          }
+        }
+      }
+    }
+
+    # Replace original rows with de-duplicated data
+    rows_replace <- meta_all$individualID == ind_id &
+      meta_all$dataContributionGroup == unique(meta_tmp$dataContributionGroup)
+    meta_all[rows_replace, ] <- meta_tmp
+  }
+
+  # Revert back to original individualIDs
+  meta_all <- meta_all |>
+    mutate(individualID = original_individualID) |>
+    select(-original_individualID)
+
+  return(meta_all)
 }

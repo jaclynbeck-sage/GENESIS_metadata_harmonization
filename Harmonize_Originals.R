@@ -173,105 +173,10 @@ harmonized_files <- c(harmonized_files, new_filename)
 
 meta_list <- lapply(harmonized_files, function(filename) {
   read.csv(filename) |>
-    mutate(
-      individualID = as.character(individualID),
-      apoeGenotype = as.character(apoeGenotype),
-      amyAny = as.character(amyAny),
-      source_file = filename,
-      # Special case: MSBB/MSSM samples were re-named for Diverse Cohorts, this
-      # makes them directly comparable
-      original_individualID = individualID,
-      individualID = str_replace(individualID, "AMPAD_MSSM_0+", "")
-    )
+    mutate(source_file = filename)
 })
-meta_all <- purrr::list_rbind(meta_list)
 
-print_qc(meta_all)
-validate_values(meta_all, spec)
-
-# Resolve duplicates -----------------------------------------------------------
-# Only for columns that are harmonized
-
-# This accounts for overlapping IDs between different studies that don't refer
-# to the same individual
-dupe_ids <- meta_all |>
-  select(individualID, dataContributionGroup) |>
-  mutate(
-    group_id = paste(individualID, dataContributionGroup),
-    duplicate = duplicated(group_id)
-  ) |>
-  subset(duplicate == TRUE) |>
-  distinct()
-
-# For each ID that has duplicate rows, resolve duplicates:
-#   1. For columns where some rows have NA and some have a unique non-NA value,
-#      replace the NA value with that unique non-NA value.
-#   2. For columns where some rows have "missing or unknown" and some have a
-#      unique value other than that, replace "missing or unknown" with the
-#      unique value.
-#   3. For the ageDeath/pmi columns where rows disagree because of precision,
-#      use the most precise value.
-for (row_id in 1:nrow(dupe_ids)) {
-  ind_id <- dupe_ids$individualID[row_id]
-
-  # This will be altered to resolve duplication, and will get added back to the
-  # meta_all data frame
-  meta_tmp <- subset(meta_all, individualID == ind_id &
-    dataContributionGroup == dupe_ids$dataContributionGroup[row_id])
-
-  for (col_name in expectedColumns) {
-    unique_vals <- unique(meta_tmp[, col_name])
-
-    if (length(unique_vals) > 1) {
-      # cat(ind_id, col_name, "[", paste(unique_vals, collapse = ", "), "]\n")
-
-      # Use most precise ageDeath or pmi value
-      if (col_name %in% c("ageDeath", "pmi")) {
-        n_decimals <- str_replace(as.character(unique_vals), ".*\\.", "") |>
-          nchar()
-        meta_tmp[, col_name] <- unique_vals[which.max(n_decimals)]
-      } else if (col_name == "cohort") {
-        # If there is more than one left over value, report it but don't try to
-        # resolve duplication. Special case: Mayo data may be labeled as "Mayo
-        # Clinic" in the original Mayo metadata or "Banner" in Diverse Cohorts,
-        # but we don't need to change this in either metadata file or print it
-        # out.
-        is_mayo_banner <- identical(
-          sort(unique_vals),
-          c("Banner", "Mayo Clinic")
-        )
-        if (!is_mayo_banner) {
-          cat(ind_id, col_name, "[", paste(unique_vals, collapse = ", "), "]\n")
-        }
-      } else {
-        # Remove NA and "missing or unknown" values to see what's left
-        leftover <- unique_vals[!is.na(unique_vals) & (unique_vals != spec$missing)]
-
-        if (length(leftover) == 1) {
-          # One unique left over value
-          meta_tmp[, col_name] <- leftover
-        } else if (length(leftover) == 0) {
-          # Nothing left, use "missing or unknown" if it's there, otherwise set
-          # to NA.
-          if (any(unique_vals == spec$missing)) {
-            meta_tmp[, col_name] <- spec$missing
-          } else {
-            meta_tmp[, col_name] <- NA
-          }
-        } else {
-          # If there is more than one left over value, report it but don't try
-          # to resolve duplication.
-          cat(ind_id, col_name, "[", paste(unique_vals, collapse = ", "), "]\n")
-        }
-      }
-    }
-  }
-
-  # Replace original rows with de-duplicated data
-  rows_replace <- meta_all$individualID == ind_id &
-    meta_all$dataContributionGroup == unique(meta_tmp$dataContributionGroup)
-  meta_all[rows_replace, ] <- meta_tmp
-}
+meta_all <- deduplicate_studies(meta_list, verbose = FALSE)
 
 print_qc(meta_all)
 validate_values(meta_all, spec)
@@ -283,9 +188,8 @@ validate_values(meta_all, spec)
 new_files <- sapply(meta_list, function(meta_old) {
   meta_new <- subset(meta_all, source_file == unique(meta_old$source_file)) |>
     select(all_of(colnames(meta_old))) |>
-    # Undo any modifications we did to the individual ID (only matters for MSBB)
-    mutate(individualID = original_individualID) |>
-    select(-source_file, -original_individualID)
+    # Remove the source file column we added
+    select(-source_file)
 
   new_file <- str_replace(
     basename(unique(meta_old$source_file)),
