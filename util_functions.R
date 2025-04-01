@@ -4,28 +4,6 @@ expectedColumns <- c(
   "amyAny", "amyThal", "amyA", "Braak", "bScore"
 )
 
-print_unique_column_vals <- function(df, numeric_columns) {
-  for (cn in colnames(df)) {
-    if (!(cn %in% c("individualID", "projid"))) {
-      vals <- unique(df[, cn])
-      if (cn %in% numeric_columns) {
-        vals <- sort(vals)
-      }
-      cat(cn, "(", paste(vals, collapse = ",  "), ")\n\n")
-    }
-  }
-}
-
-print_columns_with_nas <- function(df) {
-  vals <- c()
-  for (cn in colnames(df)) {
-    if (any(is.na(df[, cn]))) {
-      vals <- c(vals, cn)
-    }
-  }
-
-  cat(paste(vals, collapse = ",  "), "\n")
-}
 
 # TODO add all expected columns
 print_qc <- function(df,
@@ -102,9 +80,10 @@ validate_values <- function(metadata, spec, verbose = TRUE) {
     nas <- which(is.na(ageDeath))
     tmp <- na.omit(metadata$ageDeath) |>
       setdiff(spec$over90)
-    cat("X  ageDeath has invalid age values:",
-        paste(tmp[nas], collapse = ", "), "\n")
-
+    cat(
+      "X  ageDeath has invalid age values:",
+      paste(tmp[nas], collapse = ", "), "\n"
+    )
   } else if (verbose) {
     cat("OK ageDeath\n")
   }
@@ -177,59 +156,49 @@ to_Braak_stage <- function(num, spec) {
 }
 
 get_bScore <- function(Braak, spec) {
-  return(case_when(
-    Braak == spec$Braak$none ~ spec$bScore$none,
-    Braak %in% c(spec$Braak$stage1, spec$Braak$stage2) ~ spec$bScore$stage1_2,
-    Braak %in% c(spec$Braak$stage3, spec$Braak$stage4) ~ spec$bScore$stage3_4,
-    Braak %in% c(spec$Braak$stage5, spec$Braak$stage6) ~ spec$bScore$stage5_6,
-    is.na(Braak) ~ spec$missing,
+  return(case_match(Braak,
+    spec$Braak$none ~ spec$bScore$none,
+    c(spec$Braak$stage1, spec$Braak$stage2) ~ spec$bScore$stage1_2,
+    c(spec$Braak$stage3, spec$Braak$stage4) ~ spec$bScore$stage3_4,
+    c(spec$Braak$stage5, spec$Braak$stage6) ~ spec$bScore$stage5_6,
+    NA ~ spec$missing,
     .default = as.character(Braak)
   ))
 }
 
 get_amyAny <- function(amyCerad, spec) {
-  return(case_when(
-    amyCerad == spec$amyCerad$none ~ spec$amyAny$zero,
-    amyCerad %in% c(
-      spec$amyCerad$sparse,
+  return(case_match(amyCerad,
+    spec$amyCerad$none ~ spec$amyAny$zero,
+    c(spec$amyCerad$sparse,
       spec$amyCerad$moderate,
-      spec$amyCerad$frequent
-    ) ~ spec$amyAny$one,
-    is.na(amyCerad) ~ spec$missing,
+      spec$amyCerad$frequent) ~ spec$amyAny$one,
+    NA ~ spec$missing,
     .default = as.character(amyCerad)
   ))
 }
 
 get_amyA <- function(amyThal, spec) {
-  return(case_when(
-    amyThal == spec$amyThal$none ~ spec$amyA$none,
-    amyThal %in% c(
-      spec$amyThal$phase1,
-      spec$amyThal$phase2
-    ) ~ spec$amyA$phase1_2,
-    amyThal == spec$amyThal$phase3 ~ spec$amyA$phase3,
-    amyThal %in% c(
-      spec$amyThal$phase4,
-      spec$amyThal$phase5
-    ) ~ spec$amyA$phase4_5,
-    is.na(amyThal) ~ spec$missing,
+  return(case_match(amyThal,
+    spec$amyThal$none ~ spec$amyA$none,
+    c(spec$amyThal$phase1,
+      spec$amyThal$phase2) ~ spec$amyA$phase1_2,
+    spec$amyThal$phase3 ~ spec$amyA$phase3,
+    c(spec$amyThal$phase4,
+      spec$amyThal$phase5) ~ spec$amyA$phase4_5,
+    NA ~ spec$missing,
     .default = as.character(amyThal)
   ))
 }
 
 get_apoe4Status <- function(apoeGenotype, spec) {
-  return(case_when(
-    apoeGenotype %in% c(
-      spec$apoeGenotype$e2e4,
+  return(case_match(apoeGenotype,
+    c(spec$apoeGenotype$e2e4,
       spec$apoeGenotype$e3e4,
-      spec$apoeGenotype$e4e4
-    ) ~ spec$apoe4Status$e4yes,
-    apoeGenotype %in% c(
-      spec$apoeGenotype$e2e2,
+      spec$apoeGenotype$e4e4) ~ spec$apoe4Status$e4yes,
+    c(spec$apoeGenotype$e2e2,
       spec$apoeGenotype$e2e3,
-      spec$apoeGenotype$e3e3
-    ) ~ spec$apoe4Status$e4no,
-    is.na(apoeGenotype) ~ spec$missing,
+      spec$apoeGenotype$e3e3) ~ spec$apoe4Status$e4no,
+    NA ~ spec$missing,
     .default = as.character(apoeGenotype)
   ))
 }
@@ -266,15 +235,50 @@ write_metadata <- function(metadata, filename) {
   return(new_filename)
 }
 
+
 synapse_upload <- function(filename, folder_id) {
   syn_file <- File(filename, parent = folder_id)
   syn_file <- synStore(syn_file, forceVersion = FALSE)
-  return(syn_file$id)
+  return(syn_file)
 }
+
 
 synapse_download <- function(syn_id) {
   synGet(syn_id,
     downloadLocation = file.path("data", "downloads"),
     ifcollision = "overwrite.local"
   )
+}
+
+
+check_new_versions <- function(syn_id_list) {
+  for (dataset_name in names(syn_id_list)) {
+    syn_id <- syn_id_list[[dataset_name]]
+    vals <- str_split_1(syn_id, pattern = "\\.")
+
+    if (length(vals) != 2 || is.na(suppressWarnings(as.numeric(vals[2])))) {
+      cat(
+        str_glue(
+          "WARNING: no valid version specified for '{syn_id}' ({dataset_name}). ",
+          "The latest version will be used for harmonization."
+        ),
+        "\n"
+      )
+    } else {
+      id <- vals[1]
+      version <- vals[2]
+      syn_file <- synGet(id, downloadFile = FALSE)
+
+      if (syn_file$versionNumber != version) {
+        cat(
+          str_glue(
+            "WARNING: there is a new version of {id} ({dataset_name}): ",
+            "{version} => {syn_file$versionNumber}. Version {version} will be ",
+            "used for harmonization."
+          ),
+          "\n"
+        )
+      }
+    }
+  }
 }

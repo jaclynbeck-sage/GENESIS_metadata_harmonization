@@ -8,6 +8,8 @@ spec <- config::get(file = "GENESIS_harmonization.yml")
 source("util_functions.R")
 source("dataset_specific_functions.R")
 
+UPLOAD_SYNID <- "syn64759869"
+
 syn_ids <- list(
   "Diverse_Cohorts" = "syn51757646.20",
   "MayoRNAseq" = "syn23277389.7",
@@ -15,6 +17,8 @@ syn_ids <- list(
   "ROSMAP" = "syn3191087.11",
   "SEA-AD" = "syn31149116.7"
 )
+
+check_new_versions(syn_ids)
 
 harmonized_files <- c()
 
@@ -276,7 +280,7 @@ validate_values(meta_all, spec)
 
 # Use de-duplicated data but subset to only columns that exist in each
 # individual metadata file
-new_files <- lapply(meta_list, function(meta_old) {
+new_files <- sapply(meta_list, function(meta_old) {
   meta_new <- subset(meta_all, source_file == unique(meta_old$source_file)) |>
     select(all_of(colnames(meta_old))) |>
     # Undo any modifications we did to the individual ID (only matters for MSBB)
@@ -289,6 +293,14 @@ new_files <- lapply(meta_list, function(meta_old) {
     ".csv"
   )
 
-  write_metadata(meta_new, new_file)
-  return(new_file)
+  return(write_metadata(meta_new, new_file))
 })
+
+# Upload to GENESIS metadata space
+
+# Temporary: Do not upload Mayo or MSBB
+new_files <- new_files[!grepl("Mayo|MSBB", new_files)]
+
+for (filename in new_files) {
+  synapse_upload(filename, UPLOAD_SYNID)
+}

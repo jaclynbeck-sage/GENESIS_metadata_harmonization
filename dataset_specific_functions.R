@@ -52,11 +52,12 @@ harmonize_Diverse_Cohorts <- function(metadata, spec) {
       ),
       apoe4Status = get_apoe4Status(apoeGenotype, spec),
       amyA = get_amyA(amyThal, spec),
-      # Manual correction
+      ## Manual corrections
       amyCerad = case_when(
         individualID %in% cerad_fix_ids ~ spec$amyCerad$frequent,
         .default = amyCerad
       ),
+      ##
       # Update based on manual corrections
       amyAny = get_amyAny(amyCerad, spec)
     )
@@ -117,11 +118,12 @@ harmonize_MayoRNASeq <- function(metadata, spec) {
         NA ~ spec$missing,
         .default = race
       ),
-      # Manual correction
+      ## Manual correction
       race = case_when(
         individualID == "11387" ~ spec$race$other,
         .default = race
       ),
+      ##
       sex = case_match(sex,
         NA ~ spec$missing,
         .default = sex
@@ -175,6 +177,10 @@ harmonize_MayoRNASeq <- function(metadata, spec) {
 #   spec - a `config` object describing the standardized values for each field,
 #     as defined by this project's `GENESIS_harmonization.yml` file
 #
+# NOTE: There is one individual with incorrect `race` and `isHispanic` values
+# and two individuals with incorrect `Braak` values. These values are corrected
+# manually here based on Diverse Cohorts data.
+#
 # Returns:
 #   a `data.frame` with all relevant fields harmonized to the GENESIS data
 #   dictionary. Columns not defined in the data dictionary are left as-is.
@@ -204,6 +210,16 @@ harmonize_MSBB <- function(metadata, spec) {
         "U" ~ spec$missing,
         .default = race
       ),
+      ## Manual corrections
+      race = case_when(
+        individualID == "AMPAD_MSSM_0000036634" ~ spec$race$other,
+        .default = race
+      ),
+      isHispanic = case_when(
+        individualID == "AMPAD_MSSM_0000036634" ~ spec$isHispanic$hisp_true,
+        .default = isHispanic
+      ),
+      ##
       apoeGenotype = case_match(apoeGenotype,
         NA ~ spec$missing,
         .default = as.character(apoeGenotype)
@@ -221,6 +237,13 @@ harmonize_MSBB <- function(metadata, spec) {
       amyThal = spec$missing,
       amyA = get_amyA(amyThal, spec),
       Braak = to_Braak_stage(floor(Braak), spec),
+      ## Manual corrections
+      Braak = case_when(
+        individualID == "AMPAD_MSSM_0000013078" ~ to_Braak_stage(4, spec),
+        individualID == "AMPAD_MSSM_0000048247" ~ to_Braak_stage(6, spec),
+        .default = Braak
+      ),
+      ##
       bScore = get_bScore(Braak, spec),
       cohort = spec$cohort$msbb
     )

@@ -8,24 +8,23 @@ spec <- config::get(file = "GENESIS_harmonization.yml")
 source("util_functions.R")
 source("dataset_specific_functions.R")
 
+
 syn_ids <- list(
   "GEN-A1" = "syn55251012.4", # NPS-AD
-  "GEN-A2" = "syn3191087.11", # ROSMAP
-  "GEN-A4" = "syn31149116.7", # SEA-AD
-  "GEN-A8" = "syn3191087.11", # snRNAseqAD_TREM2, uses ROSMAP
+  "ROSMAP" = "syn64759878.4", # Harmonized file, for GEN-A2, GEN-A8, GEN-A13, GEN-B6
+  "SEA-AD" = "syn64759879.4", # Harmonized file, for GEN-A4 and GEN-B5
   "GEN-A9" = "syn22432749.1", # SMIB-AD
   "GEN-A10" = "syn25891193.1", # MCMPS
   "GEN-A11" = "syn31563038.1", # MC_snRNA
   "GEN-A12" = "syn51401700.2", # MC-BrAD
-  "GEN-A13" = "syn3191087.11", # snRNAseqPFC_BA10, uses ROSMAP
   "GEN-A14" = "syn24610550.2", # HBI_scRNAseq
+  "Diverse_Cohorts" = "syn64759872.4" # Harmonized file, for GEN-B4
   # "GEN-B1" = "TBD",
   # "GEN-B2" = "TBD",
-  # "GEN-B3" = "TBD",
-  "GEN-B4" = "syn51757646.20", # AMP-AD_DiverseCohorts
-  "GEN-B5" = "syn31149116.7", # SEA-AD
-  "GEN-B6" = "syn3191087.11" # MIT_ROSMAP_Multiomics metadata is syn52430346 but the study uses the ROSMAP file
+  # "GEN-B3" = "TBD"
 )
+
+check_new_versions(syn_ids)
 
 UPLOAD_SYNID <- "syn64759869"
 
@@ -35,7 +34,7 @@ synLogin()
 
 
 # GEN-A1 -----------------------------------------------------------------------
-# Has sample overlap with MayoRNASeq, MSBB, ROSMAP, and Diverse Cohorts
+# Has sample overlap with MSBB, ROSMAP, and Diverse Cohorts
 
 meta_file <- synapse_download(syn_ids[["GEN-A1"]])
 meta <- read.csv(meta_file$path)
@@ -45,7 +44,8 @@ colnames(meta)
 print_qc(meta, isHispanic_col = "ethnicity", pmi_col = "PMI", cerad_col = "CERAD")
 
 # TODO should pull metadata from Diverse Cohorts, MSBB, and ROSMAP for the non-NPS-AD samples,
-# since some info like Braak is missing from this metadata
+# since some info like Braak is missing from this metadata. There is a clinical data
+# file in the NPS-AD project with Braak etc
 meta_new <- meta |>
   select(-Component) |>
   rename(
@@ -54,6 +54,12 @@ meta_new <- meta |>
     amyCerad = CERAD
   ) |>
   mutate(
+    # Fix to allow comparison to Diverse Cohorts
+    diverseCohortsIndividualIDFormat = case_match(diverseCohortsIndividualIDFormat,
+      29637 ~ "29637_MSSM",
+      29582 ~ "29582_MSSM",
+      .default = as.character(diverseCohortsIndividualIDFormat)
+    ),
     pmi = pmi / 60,
     pmiUnits = "hours",
     # ageDeath = censor_ages(ageDeath, spec),
@@ -107,53 +113,47 @@ new_filename <- write_metadata(meta_new, meta_file$name)
 new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
 
 manifest <- rbind(manifest, data.frame(
-  study = "GEN-A1",
-  metadata_synid = new_syn_id
+  GENESIS_study = "GEN-A1",
+  ADKP_study = "NPS-AD",
+  metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
 ))
 
 
 # GEN-A2, GEN-A8, GEN-A13, GEN-B6 ----------------------------------------------
-# All use ROSMAP metadata
-
-# TODO get the harmonized file from Synapse
-ros_file <- file.path(
-  "data", "output",
-  "ROSMAP_clinical_harmonized.csv"
-)
-
-new_syn_id <- synapse_upload(ros_file, UPLOAD_SYNID)
+# All use harmonized ROSMAP metadata
 
 manifest <- rbind(
   manifest,
   data.frame(
-    study = c("GEN-A2", "GEN-A8", "GEN-A13", "GEN-B6"),
-    metadata_synid = new_syn_id
+    GENESIS_study = c("GEN-A2", "GEN-A8", "GEN-A13", "GEN-B6"),
+    ADKP_study = c("ROSMAP", "snRNAseqAD_TREM2", "snRNAseqPFC_BA10", "MIT_ROSMAP_Multiomics"),
+    metadata_synid = syn_ids[["ROSMAP"]]
   )
 )
 
 
 # GEN-A4, GEN-B5 ---------------------------------------------------------------
-# Uses SEA-AD metadata
-
-# TODO get the harmonized file from Synapse
-sea_ad_file <- file.path(
-  "data", "output",
-  "SEA-AD_individual_metadata_harmonized.csv"
-)
-
-new_syn_id <- synapse_upload(sea_ad_file, UPLOAD_SYNID)
+# Uses harmonized SEA-AD metadata
 
 manifest <- rbind(
   manifest,
   data.frame(
-    study = c("GEN-A4", "GEN-B5"),
-    metadata_synid = new_syn_id
+    GENESIS_study = c("GEN-A4", "GEN-B5"),
+    ADKP_study = c("SEA-AD", "SEA-AD"),
+    metadata_synid = syn_ids[["SEA-AD"]]
   )
 )
 
 
 # GEN-A9 -----------------------------------------------------------------------
+# No overlap with other data sets.
+
 # TODO unknown how they encode CERAD
+# Best guess is using ROSMAP-style coding:
+# 1 = "None"
+# 2 = "Sparse"
+# 4 = "Frequent"
+# There are no samples with "3"
 
 meta_file <- synapse_download(syn_ids[["GEN-A9"]])
 meta <- read.csv(meta_file$path)
@@ -176,11 +176,18 @@ meta_new <- meta |>
     apoe4Status = get_apoe4Status(apoeGenotype, spec),
     Braak = to_Braak_stage(Braak, spec),
     bScore = get_bScore(Braak, spec),
-    amyCerad = spec$missing, # TODO unknown how they encode CERAD
+    amyCerad = case_match(amyCerad, # TODO this is just a guess
+      1 ~ spec$amyCerad$none,
+      2 ~ spec$amyCerad$sparse,
+      4 ~ spec$amyCerad$frequent,
+      NA ~ spec$missing,
+      .default = as.character(amyCerad)
+    ),
     amyAny = get_amyAny(amyCerad, spec),
     amyThal = spec$missing,
     amyA = spec$missing,
-    cohort = case_when(is.na(cohort) ~ spec$cohort$smri,
+    cohort = case_match(cohort,
+      NA ~ spec$cohort$smri,
       .default = spec$cohort$banner
     ),
     dataContributionGroup = case_match(cohort,
@@ -198,11 +205,17 @@ new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
 
 manifest <- rbind(
   manifest,
-  data.frame(study = "GEN-A9", metadata_synid = new_syn_id)
+  data.frame(
+    GENESIS_study = "GEN-A9",
+    ADKP_study = "SMIB-AD",
+    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber))
 )
 
 
 # GEN-A10 ----------------------------------------------------------------------
+
+# Note: Samples come from Mayo Clinic but there is no overlap with AMP-AD 1.0 or
+# Diverse Cohorts data.
 
 meta_file <- synapse_download(syn_ids[["GEN-A10"]])
 meta <- read.csv(meta_file$path)
@@ -248,12 +261,19 @@ new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
 
 manifest <- rbind(
   manifest,
-  data.frame(study = "GEN-A10", metadata_synid = new_syn_id)
+  data.frame(
+    GENESIS_study = "GEN-A10",
+    ADKP_study = "MCMPS",
+    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber))
 )
 
 
 # GEN-A11 ----------------------------------------------------------------------
-# Has some sample overlap with original Mayo metadata and Diverse Cohorts metadata
+
+# Has some sample overlap with AMP-AD 1.0 Mayo metadata and Diverse Cohorts
+# metadata. All overlapping fields either agree or this study fills in missing
+# information, so no data adjustments are needed for this data set. We could
+# optionally pull in missing columns like Thal from 1.0 or DC metadata.
 
 meta_file <- synapse_download(syn_ids[["GEN-A11"]])
 meta <- read.csv(meta_file$path)
@@ -290,12 +310,18 @@ new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
 
 manifest <- rbind(
   manifest,
-  data.frame(study = "GEN-A11", metadata_synid = new_syn_id)
+  data.frame(
+    GENESIS_study = "GEN-A11",
+    ADKP_study = "MC_snRNA",
+    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber))
 )
 
 
 # GEN-A12 ----------------------------------------------------------------------
-# Has some sample overlap with original Mayo metadata and Diverse Cohorts metadata
+
+# Has some sample overlap with AMP-AD 1.0 Mayo metadata and Diverse Cohorts
+# metadata. There are some missing values in this data set that exist in 1.0 or
+# DC metadata, so we pull those values in.
 
 meta_file <- synapse_download(syn_ids[["GEN-A12"]])
 meta <- read.csv(meta_file$path)
@@ -333,6 +359,7 @@ meta_new <- meta |>
     cohort = spec$cohort$mayo
   )
 
+# TODO pull in missing data from 1.0 data
 print_qc(meta_new)
 validate_values(meta_new, spec)
 
@@ -341,11 +368,20 @@ new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
 
 manifest <- rbind(
   manifest,
-  data.frame(study = "GEN-A12", metadata_synid = new_syn_id)
+  data.frame(
+    GENESIS_study = "GEN-A12",
+    ADKP_study = "MC-BrAD",
+    metadata_synid = new_syn_id)
 )
 
 
 # GEN-A14 ----------------------------------------------------------------------
+
+# This study uses data from MSSM but there is no sample overlap with AMP-AD 1.0
+# MSBB or Diverse Cohorts data.
+
+# TODO unclear how they encode CERAD and I can't guess based on correlation with
+# Braak.
 
 meta_file <- synapse_download(syn_ids[["GEN-A14"]])
 meta <- read.csv(meta_file$path)
@@ -362,8 +398,10 @@ meta_new <- meta |>
   mutate(
     pmi = pmi / 60,
     ageDeath = censor_ages(ageDeath, spec),
-    isHispanic = case_when(race == "Hispanic" ~ spec$isHispanic$hisp_true,
-      is.na(isHispanic) ~ spec$missing,
+    # "Hispanic" status is encoded in the race column
+    isHispanic = case_match(race,
+      "Hispanic" ~ spec$isHispanic$hisp_true,
+      NA ~ spec$missing,
       .default = isHispanic
     ),
     race = case_match(race,
@@ -391,30 +429,28 @@ new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
 
 manifest <- rbind(
   manifest,
-  data.frame(study = "GEN-A14", metadata_synid = new_syn_id)
+  data.frame(
+    GENESIS_study = "GEN-A14",
+    ADKP_study = "HBI_scRNAseq",
+    metadata_synid = new_syn_id)
 )
 
 
 # GEN-B4 -----------------------------------------------------------------------
 # Uses Diverse Cohorts metadata
 
-# TODO get the harmonized file from Synapse
-dc_file <- file.path(
-  "data", "output",
-  "AMP-AD_DiverseCohorts_individual_metadata_harmonized.csv"
-)
-
-new_syn_id <- synapse_upload(dc_file, UPLOAD_SYNID)
-
 manifest <- rbind(
   manifest,
-  data.frame(study = "GEN-B4", metadata_synid = new_syn_id)
+  data.frame(
+    GENESIS_study = "GEN-B4",
+    ADKP_study = "AMP-AD_DiverseCohorts",
+    metadata_synid = syn_ids[["Diverse_Cohorts"]])
 )
 
 
 # Upload manifest file ---------------------------------------------------------
 
-manifest <- manifest |> arrange(study)
+manifest <- manifest |> arrange(GENESIS_study)
 manifest_file <- file.path("data", "output", "metadata_manifest.csv")
 write.csv(manifest, manifest_file,
   row.names = FALSE, quote = FALSE
@@ -431,12 +467,15 @@ df_list <- apply(manifest, 1, function(m_row) {
       individualID = as.character(individualID),
       apoeGenotype = as.character(apoeGenotype),
       amyAny = as.character(amyAny),
-      genesis_study = m_row[["study"]]
+      GENESIS_study = m_row[["GENESIS_study"]],
+      ADKP_study = m_row[["ADKP_study"]]
     )
   return(meta)
 }, simplify = FALSE)
 
 df_all <- purrr::list_rbind(df_list)
+
+validate_values(df_all, spec)
 
 # df_all <- df_all |>
 #  group_by(individualID) |>
