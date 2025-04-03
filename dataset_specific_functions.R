@@ -465,6 +465,168 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
 
 # New data sets ----------------------------------------------------------------
 
+# Harmonize NPS-AD / GEN-A1 metadata
+#
+# Modifies the NPS-AD individual metadata file to conform to the GENESIS data
+# dictionary. A separate neuropathology file needs to be merged with the
+# individual metadata before harmonization to obtain Braak scores. Source
+# metadata files: syn55251012 (version 4, individual metadata) and syn55251003
+# (version 1, neuropathology data) on Synapse.
+#
+# Note: Cerad mapping is defined in the NPS-AD data dictionary (syn57373364).
+#
+# Note: Ages are listed as "89+" in v4 of NPS-AD. All of these values should be
+# replaced with "90+" or "89", which can mostly be filled in from Diverse
+# Cohorts / AMP-AD 1.0 data. There are several individuals listed as "89+" with
+# known discrepancies to the DC / 1.0 data, which are manually corrected here.
+# The age column will be fixed in a future version of the NPS-AD metadata.
+#
+# Note: Even after de-duplication, most harmonized columns (ageDeath, pmi, sex,
+# race, isHispanic, apoeGenotype, amyCerad, Braak) that have values that
+# disagree with AMP-AD 1.0 and Diverse Cohorts data. NPS-AD determined these
+# values algorithmically or by re-processing data, or assumes these are
+# corrections to original metadata, and wishes these values to remain as-is, so
+# we do not alter them.
+#
+# Modifications needed for version 4:
+#   * Merge neuropathology data with individual metadata
+#   * Rename columns:
+#     * `ethnicity` => `isHispanic`
+#     * `PMI` => `pmi`
+#     * `CERAD` => `amyCerad`
+#     * `BRAAK_AD` => `Braak`
+#   * Fix two values in `diverseCohortsIndividualIDFormat` to match the correct
+#     format in Diverse Cohorts
+#   * Manually correct `ageDeath` column as described above
+#   * Convert `pmi` values from minutes to hours
+#   * Convert `isHispanic` values to "True" or "False"
+#   * Convert Braak numerical values to Roman numerals
+#   * Convert `amyCerad` numerical values to values in data dictionary
+#   * Convert `NA` values to "missing or unknown" in the `race`, `isHispanic`,
+#     `apoeGenotype`, `Braak`, and `amyCerad` columns
+#   * Add `apoe4Status`, `amyAny`, `amyThal`, `amyA`, and `bScore` columns
+#   * Fix `cohort` values to match data dictionary
+#   * Add the `dataContributionGroup` column with values appropriate to each
+#     cohort.
+#   * Use Diverse Cohorts and AMP-AD 1.0 data to get the correct `cohort` value
+#     for samples marked as "ROSMAP"
+#
+# Arguments:
+#   metadata - a `data.frame` of metadata from the source metadata file. Columns
+#     are variables and rows are individuals.
+#   neuropath - a `data.frame` of neuropathology data for each individual, which
+#     can be matched to `metadata` by `individualID`. Columns are variables and
+#     rows are individuals.
+#   harmonized_baseline - a `data.frame` of de-duplicated and harmonized
+#     metadata from all AMP-AD 1.0 studies and Diverse Cohorts
+#   spec - a `config` object describing the standardized values for each field,
+#     as defined by this project's `GENESIS_harmonization.yml` file
+#
+# Returns:
+#   a `data.frame` with all relevant fields harmonized to the GENESIS data
+#   dictionary. Columns not defined in the data dictionary are left as-is.
+#
+harmonize_NPS_AD <- function(metadata, neuropath, harmonized_baseline, spec) {
+  metadata <- metadata |>
+    # Braak is all NA in the individual metadata file but has values in the
+    # neuropath file
+    select(-Braak) |>
+    merge(neuropath)
+
+  meta_new <- metadata |>
+    select(-Component) |>
+    rename(
+      isHispanic = ethnicity,
+      pmi = PMI,
+      amyCerad = CERAD,
+      Braak = BRAAK_AD
+    ) |>
+    mutate(
+      # Fix to allow comparison to Diverse Cohorts
+      diverseCohortsIndividualIDFormat = case_match(diverseCohortsIndividualIDFormat,
+        29637 ~ "29637_MSSM",
+        29582 ~ "29582_MSSM",
+        .default = as.character(diverseCohortsIndividualIDFormat)
+      ),
+      ## Manual corrections
+      ageDeath = case_match(ageDeath,
+        # Setting these to NA will force these values to be filled in by Diverse
+        # Cohorts / AMP-AD 1.0 data during de-duplication
+        "89+" ~ NA,
+        .default = ageDeath),
+      ageDeath = case_match(individualID,
+        # Exceptions to the above: These three individuals have a different age
+        # in NPS-AD than Diverse Cohorts / 1.0 data that should not be over-
+        # written
+        c("AMPAD_MSSM_0000011938", "AMPAD_MSSM_0000056009") ~ spec$over90,
+        "AMPAD_MSSM_0000077061" ~ "89",
+        .default = ageDeath
+      ),
+      ##
+      pmi = pmi / 60,
+      pmiUnits = "hours",
+      race = case_match(race,
+        NA ~ spec$missing,
+        .default = race
+      ),
+      isHispanic = case_match(isHispanic,
+        "Hispanic or Latino" ~ spec$isHispanic$hisp_true,
+        "Not Hispanic or Latino" ~ spec$isHispanic$hisp_false,
+        NA ~ spec$missing,
+        .default = isHispanic
+      ),
+      apoeGenotype = case_match(apoeGenotype,
+        NA ~ spec$missing,
+        .default = as.character(apoeGenotype)
+      ),
+      apoe4Status = get_apoe4Status(apoeGenotype, spec),
+      # Cerad mapping per NPS-AD data dictionary (syn57373364)
+      amyCerad = case_match(amyCerad,
+        1 ~ spec$amyCerad$none,
+        2 ~ spec$amyCerad$sparse,
+        3 ~ spec$amyCerad$moderate,
+        4 ~ spec$amyCerad$frequent,
+        NA ~ spec$missing,
+        .default = as.character(amyCerad)
+      ),
+      amyAny = get_amyAny(amyCerad, spec),
+      amyThal = spec$missing,
+      amyA = spec$missing,
+      Braak = to_Braak_stage(Braak, spec),
+      bScore = get_bScore(Braak, spec),
+      cohort = case_match(cohort,
+        "MSBB" ~ spec$cohort$msbb,
+        .default = cohort
+      ),
+      dataContributionGroup = case_match(cohort,
+        spec$cohort$msbb ~ spec$dataContributionGroup$mssm,
+        spec$cohort$hbcc ~ spec$dataContributionGroup$nimh,
+        c(spec$cohort$ros, spec$cohort$map) ~ spec$dataContributionGroup$rush,
+        "ROSMAP" ~ spec$dataContributionGroup$rush,
+        .default = ""
+      )
+    )
+
+  # Pull missing information from AMP-AD 1.0 and Diverse Cohorts metadata,
+  # including correct cohort information
+  meta_new <- meta_new |>
+    mutate(source = "GEN-A1")
+
+  meta_new <- deduplicate_studies(
+    list(meta_new, harmonized_baseline),
+    spec,
+    # NPS-AD did their own re-processing of these values, which should not be
+    # over-written by any other data set.
+    exclude_cols = c("amyCerad", "amyAny", "Braak", "bScore"),
+    verbose = FALSE
+  ) |>
+    subset(source == "GEN-A1") |>
+    select(all_of(colnames(meta_new)), -source)
+
+  return(meta_new)
+}
+
+
 # Harmonize SMIB-AD / GEN-A9 metadata
 #
 # Modifies the SMIB-AD individual metadata file to conform to the GENESIS data
@@ -615,7 +777,7 @@ harmonize_MCMPS <- function(metadata, spec) {
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
 #     are variables and rows are individuals.
 #   harmonized_baseline - a `data.frame` of de-duplicated and harmonized
-#     metadata from all AMP-AD 1.0 studies, Diverse Cohorts, and SEA-AD
+#     metadata from all AMP-AD 1.0 studies and Diverse Cohorts
 #   spec - a `config` object describing the standardized values for each field,
 #     as defined by this project's `GENESIS_harmonization.yml` file
 #
@@ -646,12 +808,15 @@ harmonize_MC_snRNA <- function(metadata, harmonized_baseline, spec) {
 
   # Pull missing information from AMP-AD 1.0 and Diverse Cohorts metadata
   meta_new <- meta_new |>
-    mutate(source_file = "GEN-A11")
+    mutate(source = "GEN-A11")
 
-  meta_new <- deduplicate_studies(list(harmonized_baseline, meta_new),
-                                  verbose = FALSE) |>
-    subset(source_file == "GEN-A11") |>
-    select(all_of(colnames(meta_new)), -source_file)
+  meta_new <- deduplicate_studies(
+    list(meta_new, harmonized_baseline),
+    spec,
+    verbose = FALSE
+  ) |>
+    subset(source == "GEN-A11") |>
+    select(all_of(colnames(meta_new)), -source)
 
   return(meta_new)
 }
@@ -683,7 +848,7 @@ harmonize_MC_snRNA <- function(metadata, harmonized_baseline, spec) {
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
 #     are variables and rows are individuals.
 #   harmonized_baseline - a `data.frame` of de-duplicated and harmonized
-#     metadata from all AMP-AD 1.0 studies, Diverse Cohorts, and SEA-AD
+#     metadata from all AMP-AD 1.0 studies and Diverse Cohorts
 #   spec - a `config` object describing the standardized values for each field,
 #     as defined by this project's `GENESIS_harmonization.yml` file
 #
@@ -723,12 +888,15 @@ harmonize_MC_BrAD <- function(metadata, harmonized_baseline, spec) {
 
   # Pull missing information from AMP-AD 1.0 and Diverse Cohorts metadata
   meta_new <- meta_new |>
-    mutate(source_file = "GEN-A12")
+    mutate(source = "GEN-A12")
 
-  meta_new <- deduplicate_studies(list(harmonized_baseline, meta_new),
-                                  verbose = FALSE) |>
-    subset(source_file == "GEN-A12") |>
-    select(all_of(colnames(meta_new)), -source_file)
+  meta_new <- deduplicate_studies(
+    list(meta_new, harmonized_baseline),
+    spec,
+    verbose = FALSE
+  ) |>
+    subset(source == "GEN-A12") |>
+    select(all_of(colnames(meta_new)), -source)
 
   return(meta_new)
 }

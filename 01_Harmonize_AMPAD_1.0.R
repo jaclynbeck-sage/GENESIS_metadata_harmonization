@@ -156,7 +156,7 @@ df_list[["Diverse_Cohorts"]] <- meta_new
 
 # Merge all files into one data frame ------------------------------------------
 
-meta_all <- deduplicate_studies(df_list, verbose = FALSE)
+meta_all <- deduplicate_studies(df_list, spec, verbose = FALSE)
 
 print_qc(meta_all)
 validate_values(meta_all, spec)

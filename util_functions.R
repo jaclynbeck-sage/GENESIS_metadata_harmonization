@@ -285,7 +285,22 @@ check_new_versions <- function(syn_id_list) {
 }
 
 
+# For each ID that has duplicate rows, resolve duplicates:
+#   1. For columns where some rows have NA and some have a unique non-NA value,
+#      replace the NA value with that unique non-NA value.
+#   2. For columns where some rows have "missing or unknown" and some have a
+#      unique value other than that, replace "missing or unknown" with the
+#      unique value.
+#   3. For the ageDeath/pmi columns where rows disagree because of precision,
+#      use the most precise value.
+#   4. For cases where cohort values disagree, resolve as follows: Replace
+#      "ROSMAP" with the cohort value from Diverse Cohorts / AMP-AD 1.0, ignore
+#      cases where the disagreement is "Mayo Clinic" vs "Banner", otherwise
+#      report the difference.
+# Note: to shorten this function and make it more readable, some processing has
+# been broken out into separate functions.
 deduplicate_studies <- function(df_list,
+                                spec,
                                 include_cols = expectedColumns,
                                 exclude_cols = c(),
                                 verbose = TRUE) {
@@ -293,9 +308,7 @@ deduplicate_studies <- function(df_list,
   df_list <- lapply(df_list, function(df_item) {
     df_item |>
       mutate(
-        individualID = as.character(individualID),
-        apoeGenotype = as.character(apoeGenotype),
-        amyAny = as.character(amyAny),
+        across(c(individualID, apoeGenotype, amyAny), as.character),
         # Special case: MSBB/MSSM samples were re-named for Diverse Cohorts, this
         # makes them directly comparable
         original_individualID = individualID,
@@ -314,6 +327,8 @@ deduplicate_studies <- function(df_list,
   # This accounts for overlapping IDs between different studies that don't refer
   # to the same individual
   dupe_ids <- meta_all |>
+    select(all_of(include_cols)) |>
+    distinct() |>
     select(individualID, dataContributionGroup) |>
     mutate(
       group_id = paste(individualID, dataContributionGroup),
@@ -322,14 +337,7 @@ deduplicate_studies <- function(df_list,
     subset(duplicate == TRUE) |>
     distinct()
 
-  # For each ID that has duplicate rows, resolve duplicates:
-  #   1. For columns where some rows have NA and some have a unique non-NA value,
-  #      replace the NA value with that unique non-NA value.
-  #   2. For columns where some rows have "missing or unknown" and some have a
-  #      unique value other than that, replace "missing or unknown" with the
-  #      unique value.
-  #   3. For the ageDeath/pmi columns where rows disagree because of precision,
-  #      use the most precise value.
+  # Resolve duplicated data for each individual as best as possible
   for (row_id in 1:nrow(dupe_ids)) {
     ind_id <- dupe_ids$individualID[row_id]
 
@@ -342,47 +350,41 @@ deduplicate_studies <- function(df_list,
       unique_vals <- unique(meta_tmp[, col_name])
 
       if (length(unique_vals) > 1) {
+        # For reporting un-resolved mismatches
+        report_string <- paste(
+          ind_id, col_name, "[", paste(unique_vals, collapse = ", "), "]\n"
+        )
+
         if (verbose) {
-          cat(ind_id, col_name, "[", paste(unique_vals, collapse = ", "), "]\n")
+          cat(report_string)
         }
 
-        # Use most precise ageDeath or pmi value
-        if (col_name %in% c("ageDeath", "pmi")) {
-          n_decimals <- str_replace(as.character(unique_vals), ".*\\.", "") |>
-            nchar()
-          meta_tmp[, col_name] <- unique_vals[which.max(n_decimals)]
-        } else if (col_name == "cohort") {
-          # If there is more than one left over value, report it but don't try to
-          # resolve duplication. Special case: Mayo data may be labeled as "Mayo
-          # Clinic" in the original Mayo metadata or "Banner" in Diverse Cohorts,
-          # but we don't need to change this in either metadata file or print it
-          # out.
-          is_mayo_banner <- identical(
-            sort(unique_vals),
-            c("Banner", "Mayo Clinic")
-          )
-          if (!is_mayo_banner) {
-            cat(ind_id, col_name, "[", paste(unique_vals, collapse = ", "), "]\n")
+        # Remove NA and "missing or unknown" values and see what's left
+        leftover <- setdiff(unique_vals, spec$missing) |>
+          na.omit()
+
+        # If one unique value left, replace all values with that value
+        if (length(leftover) == 1) {
+          meta_tmp[, col_name] <- leftover
+        } else if (length(leftover) == 0) {
+          # Nothing left, use "missing or unknown" if it's there, otherwise set
+          # to NA.
+          if (any(unique_vals == spec$missing)) {
+            meta_tmp[, col_name] <- spec$missing
+          } else {
+            meta_tmp[, col_name] <- NA
           }
         } else {
-          # Remove NA and "missing or unknown" values to see what's left
-          leftover <- unique_vals[!is.na(unique_vals) & (unique_vals != spec$missing)]
-
-          if (length(leftover) == 1) {
-            # One unique left over value
-            meta_tmp[, col_name] <- leftover
-          } else if (length(leftover) == 0) {
-            # Nothing left, use "missing or unknown" if it's there, otherwise set
-            # to NA.
-            if (any(unique_vals == spec$missing)) {
-              meta_tmp[, col_name] <- spec$missing
-            } else {
-              meta_tmp[, col_name] <- NA
-            }
+          # More than 1 value left after omission of NA and "missing or unknown".
+          # Do some column-specific handling of duplicates
+          if (col_name %in% c("ageDeath", "pmi")) {
+            meta_tmp <- deduplicate_ageDeath_pmi(meta_tmp, leftover, col_name, report_string)
+          } else if (col_name == "cohort") {
+            meta_tmp <- deduplicate_cohort(meta_tmp, leftover, col_name, spec, report_string)
           } else {
-            # If there is more than one left over value, report it but don't try
-            # to resolve duplication.
-            cat(ind_id, col_name, "[", paste(unique_vals, collapse = ", "), "]\n")
+            # Column is something else that we don't have specific handling for,
+            # so we report it but don't try to resolve duplication.
+            cat(report_string)
           }
         }
       }
@@ -400,4 +402,60 @@ deduplicate_studies <- function(df_list,
     select(-original_individualID)
 
   return(meta_all)
+}
+
+
+deduplicate_ageDeath_pmi <- function(meta_tmp, leftover, col_name, report_string) {
+  # By this point there is more than one unique, non-NA age value in `leftover`.
+  # Check if all values are roughly equal to make sure there isn't an actual
+  # mis-match. There may be more than 2 values so this is the quickest way to
+  # check.
+  num_vals <- suppressWarnings(as.numeric(leftover)) |>
+    na.omit() |>
+    round()
+
+  # Report a real mismatch. `num_vals` should have one unique value if all
+  # numbers are roughly equal, AND `num_vals` should be the same length as
+  # `leftover`. If it's not, that means not all values in `leftover` are numeric
+  # (i.e. one may be 90+). We report it but don't try and resolve the
+  # duplication.
+  if (length(unique(num_vals)) > 1 || length(num_vals) != length(leftover)) {
+    cat(report_string)
+  }
+
+  # For now we leave the ages as-is even if there's difference in precision
+
+  return(meta_tmp)
+}
+
+
+deduplicate_cohort <- function(meta_tmp, leftover, col_name, spec, report_string) {
+  # If there is more than one left over value and the values don't meet the two
+  # special cases below, report it but don't try to resolve duplication.
+
+  # Special case: NPS-AD reports cohort on some samples as "ROSMAP", which needs
+  # to instead use the cohort value from Diverse Cohorts or ROSMAP 1.0 data.
+  if ("ROSMAP" %in% leftover) {
+    cohort_val <- setdiff(leftover, "ROSMAP")
+
+    # If there is still more than one value for cohort, or no remaining values,
+    # report it but don't resolve the de-duplication
+    if (length(cohort_val) != 1) {
+      cat(report_string)
+    } else {
+      # Otherwise resolve duplication
+      meta_tmp[, col_name] <- cohort_val
+    }
+  } else {
+    # Special case: Mayo data may be labeled as "Mayo Clinic" in the original
+    # Mayo metadata or "Banner" in Diverse Cohorts, but we don't need to change
+    # this in either metadata file or print it out.
+    is_mayo_banner <- identical(sort(leftover), c(spec$cohort$banner, spec$cohort$mayo))
+
+    if (!is_mayo_banner) {
+      cat(report_string)
+    }
+  }
+
+  return(meta_tmp)
 }
