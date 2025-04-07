@@ -1,3 +1,22 @@
+# This script harmonizes and de-duplicates multiple studies used for GENESIS,
+# filling in missing information where there is sample overlap between a data
+# set and the Diverse Cohorts / AMP-AD 1.0 data. Harmonized metadata is uploaded
+# to Synapse for use.
+#
+# The following data sets are harmonized in this script:
+#   GEN-A1 / NPS-AD
+#   GEN-A2 / ROSMAP
+#   GEN-A4 / SEA-AD
+#   GEN-A8 / snRNAseqAD_Trem2
+#   GEN-A9 / SMIB-AD
+#   GEN-A10 / MCMPS
+#   GEN-A11 / MC_snRNA
+#   GEN-A12 / MC-BrAD
+#   GEN-A13 / snRNAseqPFC_BA10
+#   GEN-B4 / AMP-AD_DiverseCohorts
+#   GEN-B5 / SEA-AD (multiome)
+#   GEN-B6 / MIT_ROSMAP_Multiomics
+
 library(synapser)
 library(dplyr)
 library(purrr)

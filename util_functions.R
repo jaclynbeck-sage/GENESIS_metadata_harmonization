@@ -1,3 +1,11 @@
+# This file contains utility functions and variables that are used in multiple
+# steps/scripts and are not dataset-specific. Functions include things like
+# Synapse upload/download, quality control printouts, converting raw values to
+# harmonized values, harmonized value validation, and de-duplication of data
+# across multiple studies.
+
+# Global variable -- all columns that are harmonized and should be in each
+# metadata table
 expectedColumns <- c(
   "individualID", "dataContributionGroup", "cohort", "sex", "race",
   "isHispanic", "ageDeath", "pmi", "apoeGenotype", "apoe4Status", "amyCerad",
@@ -5,7 +13,27 @@ expectedColumns <- c(
 )
 
 
-# TODO add all expected columns
+# Quality control printouts
+#
+# Prints summaries of all expected columns for visual inspection:
+#   1. Reports which columns are missing from the data frame
+#   2. Reports how many NA values are in each column
+#   3. Prints tables of unique values in each column vs the count of each value,
+#      excluding `ageDeath` and `pmi`.
+#   4. Checks if there are any `ageDeath` values of 90 or over that are not
+#      censored as "90+".
+#
+# Arguments:
+#   df - a data.frame where rows are individuals and columns are variables
+#   <X>_col - the real name of the column in `df` that corresponds to <X>.
+#             Default values are provided, but many data sets have column names
+#             that are different from the desired harmonized name (i.e. "CERAD"
+#             instead of "amyCerad" or "ethnicity" instead of "isHispanic"). If
+#             no column corresponding to <X> exists, `<X>_col` can be left as
+#             the default value and will be reported as missing by this
+#             function.
+# Returns:
+#   nothing
 print_qc <- function(df,
                      ageDeath_col = "ageDeath",
                      isHispanic_col = "isHispanic",
@@ -65,6 +93,33 @@ print_qc <- function(df,
 }
 
 
+# Validation of harmonized results
+#
+# Given a data frame of harmonized metadata, this function validates the following:
+#   1. There are no values in any harmonized field that aren't in the data dictionary
+#   2. There are no `ageDeath` values above 89
+#   3. The `ageDeath` and `pmi` columns only have numbers, NAs, or "90+"
+#   4. Columns whose values are derived from other columns (`apoe4Status`,
+#      `amyA`, `amyAny`, and `bScore`) have the correctly-derived values. This
+#      check is needed to catch any accidental differences introduced by filling
+#      in missing data from Diverse Cohorts / AMP-AD 1.0.
+#
+# If a column passes validation, the phrase "OK <column>" will print out if
+# `verbose = TRUE`. If a column fails validation, the function will print out
+# "X" plus a message describing the failure and failing values.
+#
+# Arguments:
+#   metadata - a data frame of harmonized metadata, where rows are individuals
+#          and columns are variables
+#   spec - a `config` object describing the standardized values for each field,
+#          as defined by this project's `GENESIS_harmonization.yml` file
+#   verbose - if TRUE, the phrase "OK <column>" will print out if the column
+#          passes validation. If FALSE, nothing will print out for columns that
+#          pass. Columns that fail validation always have a print out, so
+#          setting verbose = FALSE will result in only failures being printed.
+#
+# Returns:
+#   nothing
 validate_values <- function(metadata, spec, verbose = TRUE) {
   # ageDeath should have only NA, numbers, or "90+". No numbers should be above
   # 89.
@@ -138,8 +193,22 @@ validate_values <- function(metadata, spec, verbose = TRUE) {
 }
 
 
-# Always defaults to returning the original value if it doesn't meet any of the
-# below criteria, so it will fail validation
+# Convert numbers to Braak stage values
+#
+# This function converts numerical Braak values (0-6) to "Stage " + the Roman
+# numeral version of the number, as defined by the GENESIS data dictionary.
+#
+# Arguments:
+#   num - a vector containing numerical Braak stages from 0 to 6 or `NA`
+#   spec - a `config` object describing the standardized values for each field,
+#          as defined by this project's `GENESIS_harmonization.yml` file
+#
+# Returns:
+#   a vector with all Braak values converted to "Stage " + Roman numeral, and
+#   all `NA` values converted to "missing or unknown". This function always
+#   defaults to returning the original value as a character string if it doesn't
+#   meet any of the criteria in the `case_match` statement, so the value will
+#   fail validation and can be examined.
 to_Braak_stage <- function(num, spec) {
   return(case_match(num,
     0 ~ spec$Braak$none,
@@ -154,6 +223,31 @@ to_Braak_stage <- function(num, spec) {
   ))
 }
 
+
+# Get bScore values based on Braak
+#
+# This function turns (harmonized) Braak scores into the corresponding values
+# for bScore in the data dictionary:
+#   "None" => "None"
+#   "Stage I", "Stage II" => "Braak Stage I-II"
+#   "Stage III", "Stage IV" => "Braak Stage III-IV"
+#   "Stage V", "Stage VI" => "Braak Stage V-VI"
+#   "missing or unknown" => "missing or unknown"
+#
+# Arguments:
+#   Braak - a vector containing harmonized, data dictionary-compliant Braak
+#           scores, which are either "Stage " + a Roman numeral or "missing or
+#           unknown".
+#   spec - a `config` object describing the standardized values for each field,
+#          as defined by this project's `GENESIS_harmonization.yml` file
+#
+# Returns:
+#   a vector of strings with bScore values derived from Braak. Values should be
+#   as described above.
+#
+#   This function always defaults to returning the original Braak value as a
+#   character string if it doesn't meet any of the criteria in the `case_match`
+#   statement, so the value will fail validation and can be examined.
 get_bScore <- function(Braak, spec) {
   return(case_match(Braak,
     spec$Braak$none ~ spec$bScore$none,
@@ -165,6 +259,28 @@ get_bScore <- function(Braak, spec) {
   ))
 }
 
+
+# Get amyAny values based on amyCerad
+#
+# This function turns (harmonized) amyCerad scores into the corresponding values
+# for amyAny in the data dictionary:
+#   "None/No AD/C0" => "0"
+#   "Sparse/Possible/C1", "Moderate/Probable/C2", "Frequent/Definite/C3" => "1"
+#   "missing or unknown" => "missing or unknown"
+#
+# Arguments:
+#   amyCerad - a vector containing harmonized, data dictionary-compliant
+#          amyCerad scores, which should all be strings
+#   spec - a `config` object describing the standardized values for each field,
+#          as defined by this project's `GENESIS_harmonization.yml` file
+#
+# Returns:
+#   a vector of strings with amyAny values derived from amyCerad. Values should
+#   be as described above.
+#
+#   This function always defaults to returning the original amyCerad value as a
+#   character string if it doesn't meet any of the criteria in the `case_match`
+#   statement, so the value will fail validation and can be examined.
 get_amyAny <- function(amyCerad, spec) {
   return(case_match(amyCerad,
     spec$amyCerad$none ~ spec$amyAny$zero,
@@ -176,6 +292,30 @@ get_amyAny <- function(amyCerad, spec) {
   ))
 }
 
+
+# Get amyA values based on amyThal
+#
+# This function turns (harmonized) amyThal scores into the corresponding values
+# for amyA in the data dictionary:
+#   "None" => "None"
+#   "Phase 1", "Phase 2" => "Thal Phase 1 or 2"
+#   "Phase 3" => "Thal Phase 3"
+#   "Phase 4", "Phase 5" => "Thal Phase 4 or 5"
+#   "missing or unknown" => "missing or unknown"
+#
+# Arguments:
+#   amyThal - a vector containing harmonized, data dictionary-compliant
+#          amyThal scores, which should all be strings
+#   spec - a `config` object describing the standardized values for each field,
+#          as defined by this project's `GENESIS_harmonization.yml` file
+#
+# Returns:
+#   a vector of strings with amyA values derived from amyThal, with values as
+#   described above.
+#
+#   This function always defaults to returning the original amyThal value as a
+#   character string if it doesn't meet any of the criteria in the `case_match`
+#   statement, so the value will fail validation and can be examined.
 get_amyA <- function(amyThal, spec) {
   return(case_match(amyThal,
     spec$amyThal$none ~ spec$amyA$none,
@@ -187,6 +327,29 @@ get_amyA <- function(amyThal, spec) {
   ))
 }
 
+
+# Get APOE4 status based on genotype
+#
+# This function turns (harmonized) apoeGenotype scores into the corresponding
+# values for apoe4Status in the data dictionary:
+#   "22", "23", "33" => "no"
+#   "24", "34", "44" => "yes"
+#   "missing or unknown" => "missing or unknown"
+#
+# Arguments:
+#   apoeGenotype - a vector containing harmonized, data dictionary-compliant
+#          apoeGenotype scores, which should all be strings
+#   spec - a `config` object describing the standardized values for each field,
+#          as defined by this project's `GENESIS_harmonization.yml` file
+#
+# Returns:
+#   a vector of strings with apoe4Status values derived from apoeGenotype, with
+#   values as described above.
+#
+#   This function always defaults to returning the original apoeGenotype value
+#   as a character string if it doesn't meet any of the criteria in the
+#   `case_match` statement, so the value will fail validation and can be
+#   examined.
 get_apoe4Status <- function(apoeGenotype, spec) {
   return(case_match(apoeGenotype,
     c(
@@ -205,6 +368,20 @@ get_apoe4Status <- function(apoeGenotype, spec) {
 }
 
 
+# Censor ages 90 or above
+#
+# This function censors any ages 90 or above by replacing them with "90+". It
+# also converts some studies' versions of this from "90_or_over" or "89+" to
+# "90+". Empty strings and "missing or unknown" values should be replaced with
+# `NA`.
+#
+# Arguments:
+#   ages - a vector of ages, which may be strings or numerical
+#   spec - a `config` object describing the standardized values for each field,
+#          as defined by this project's `GENESIS_harmonization.yml` file
+#
+# Returns:
+#   a vector of strings with age values properly censored
 censor_ages <- function(ages, spec) {
   return(case_when(
     ages %in% c("90+", "90_or_over", "89+") ~ spec$over90,
@@ -216,6 +393,22 @@ censor_ages <- function(ages, spec) {
 }
 
 
+# Write a metadata data frame to a file
+#
+# This is a wrapper around `write.csv` that has some extra handling for values
+# that contain commas. Values with commas need to be escaped with quotes for a
+# CSV file, and some data sets have them escaped already and some don't.
+#
+# Arguments:
+#   metadata - a data frame of harmonized metadata where rows are individuals
+#              and columns are variables
+#   filename - the full path and name of the file to be written. This function
+#              automatically inserts "_harmonized" just before ".csv" in the
+#              file name.
+#
+# Returns:
+#   the new file name that was written, which should have "_harmonized" added
+#   before ".csv"
 write_metadata <- function(metadata, filename) {
   # Put quotes around values with commas
   for (column in colnames(metadata)) {
@@ -237,6 +430,19 @@ write_metadata <- function(metadata, filename) {
 }
 
 
+# Upload a file to Synapse
+#
+# This is a wrapper around `synStore` to shorten code slightly. It uploads a
+# file to Synapse but doesn't increment the file's version unless the contents
+# are different than what is currently on Synapse.
+#
+# Arguments:
+#   filename - the full path and name of the file to upload
+#   folder_id - the Synapse ID of the folder on Synapse where the file should be
+#              uploaded.
+#
+# Returns:
+#   a Synapse `File` object containing information about the uploaded file
 synapse_upload <- function(filename, folder_id) {
   syn_file <- File(filename, parent = folder_id)
   syn_file <- synStore(syn_file, forceVersion = FALSE)
@@ -244,6 +450,17 @@ synapse_upload <- function(filename, folder_id) {
 }
 
 
+# Download a file from Synapse
+#
+# This is a wrapper around `synGet` to shorten code slightly. All downloads go
+# into "data/downloads", and if a file with that name already exists, the old
+# file is overwritten with the new one to avoid making multiple copies.
+#
+# Arguments:
+#   syn_id - the Synapse ID of the file on Synapse to download
+#
+# Returns:
+#   a Synapse `File` object containing information about the downloaded file
 synapse_download <- function(syn_id) {
   synGet(syn_id,
     downloadLocation = file.path("data", "downloads"),
@@ -252,6 +469,22 @@ synapse_download <- function(syn_id) {
 }
 
 
+# Check Synapse for new file versions
+#
+# All Synapse IDs used for this code have the file's version number included for
+# reproducibility. This function checks to see if there are newer versions
+# available on Synapse than what is specified in the code, and prints a message
+# if that's the case.
+#
+# Arguments:
+#   syn_id_list - a named list where each item is a Synapse ID of the format
+#         "syn123" or "syn123.5", where the optional number after the decimal is
+#         the file version on Synapse. If no version is specified, a warning
+#         is printed stating that the latest version of the file on Synapse will
+#         be used.
+#
+# Returns:
+#   nothing
 check_new_versions <- function(syn_id_list) {
   for (dataset_name in names(syn_id_list)) {
     syn_id <- syn_id_list[[dataset_name]]
@@ -285,26 +518,64 @@ check_new_versions <- function(syn_id_list) {
 }
 
 
-# For each ID that has duplicate rows, resolve duplicates:
+# De-duplicate metadata from different studies
+#
+# This function takes a list of metadata data frames, concatenates them, and
+# then attempts to resolve cases where different studies have different data for
+# the same individual.
+#
+# For each individual ID that has duplicate rows, resolve duplicates:
 #   1. For columns where some rows have NA and some have a unique non-NA value,
 #      replace the NA value with that unique non-NA value.
 #   2. For columns where some rows have "missing or unknown" and some have a
 #      unique value other than that, replace "missing or unknown" with the
 #      unique value.
-#   3. For the ageDeath/pmi columns where rows disagree because of precision,
-#      use the most precise value.
-#   4. For cases where cohort values disagree, resolve as follows: Replace
-#      "ROSMAP" with the cohort value from Diverse Cohorts / AMP-AD 1.0, ignore
-#      cases where the disagreement is "Mayo Clinic" vs "Banner", otherwise
-#      report the difference.
-# Note: to shorten this function and make it more readable, some processing has
+#   3. For the ageDeath/pmi columns where rows have different numbers, report
+#      the difference but leave the values as-is. If rows disagree only because
+#      of precision, nothing is reported.
+#   4. For cases where cohort values disagree, resolve as follows:
+#       a) Replace "ROSMAP" with the cohort value from Diverse Cohorts /
+#          AMP-AD 1.0,
+#       b) Ignore cases where the disagreement is "Mayo Clinic" vs "Banner",
+#       c) Otherwise, report the difference but don't change any values
+#
+# When duplicated data is un-resolvable, either because it is a special case
+# that is intentionally flagged or because this function doesn't have anything
+# implemented to handle it, the following information is printed out:
+#   "<individualID> <column name> [<list of values for this individual/column>]"
+#
+# Note: Individual IDs from MSSM-related studies changed format in Diverse
+# Cohorts. In order to be able to compare overlapping individuals, all IDs are
+# temporarily converted to the Diverse Cohorts format, then reverted back to
+# their original values for the returned data frame.
+#
+# Note: To shorten this function and make it more readable, some processing has
 # been broken out into separate functions.
+#
+# Arguments:
+#   df_list - a list of data frames, each of which must include an `individualID`
+#       column as well as every column listed in `include_cols`
+#   spec - a `config` object describing the standardized values for each field,
+#       as defined by this project's `GENESIS_harmonization.yml` file
+#   include_cols - a vector of column names to de-duplicate
+#   exclude_cols - a vector of column names that should be excluded from
+#       de-duplication even if they are listed in `include_cols`
+#   verbose - if FALSE, only issues or un-resolvable data will be printed. If
+#       TRUE, information on every column with duplicate values for each
+#       individual will be reported even the duplication is resolved or ignored.
+#
+# Returns:
+#   a single data frame containing all rows from all data frames in `df_list`,
+#   with column values de-duplicated where possible. The data frame will contain
+#   all columns present in any data frame in `df_list`, and values will be `NA`
+#   for rows that come from data frames without that column.
 deduplicate_studies <- function(df_list,
                                 spec,
                                 include_cols = expectedColumns,
                                 exclude_cols = c(),
                                 verbose = TRUE) {
-  # Make sure certain fields in each data frame are of the same type
+  # Make sure certain fields in each data frame are of the same type. Also
+  # convert MSSM-style individual IDs to Diverse Cohorts-style IDs.
   df_list <- lapply(df_list, function(df_item) {
     df_item |>
       mutate(
@@ -405,6 +676,31 @@ deduplicate_studies <- function(df_list,
 }
 
 
+# Age- and PMI-specific handling for de-duplication
+#
+# This function is used inside `deduplicate_studies` to resolve duplication of
+# age and PMI data for a single individual. If this function is called, then
+# there are at least 2 distinct, non-NA values in the `ageDeath` or `pmi`
+# column that are assigned to this individual. This function checks whether the
+# numbers differ only by precision (e.g. 3.5 vs 3.547), or if the numbers are
+# completely different (e.g. 4 vs 10). The former case is ignored, and the
+# latter case will be reported to the console. Currently, no modification is
+# done to the values themselves, as NPS-AD wishes to keep all of their values
+# as-is even where they differ from Diverse Cohorts / AMP-AD 1.0.
+#
+# Arguments:
+#   meta_tmp - a data frame with 2 or more rows, where all rows have the same
+#     individual ID and there are 2 or more distinct values in the `ageDeath`
+#     and/or `pmi` column
+#   leftover - a vector of unique values from <col_name> for this individual,
+#     which has had `NA` values removed
+#   col_name - the name of the column being handled, either "ageDeath" or "pmi"
+#   report_string - the string that gets printed out if there is a real
+#     difference between values that is not due to precision. The string
+#     contains the `individualID`, column name, and unique values in the column.
+#
+# Returns:
+#   meta_tmp unaltered (giving us the option to alter it in a future update)
 deduplicate_ageDeath_pmi <- function(meta_tmp, leftover, col_name, report_string) {
   # By this point there is more than one unique, non-NA age value in `leftover`.
   # Check if all values are roughly equal to make sure there isn't an actual
@@ -429,6 +725,36 @@ deduplicate_ageDeath_pmi <- function(meta_tmp, leftover, col_name, report_string
 }
 
 
+# Cohort-specific handling for de-duplication
+#
+# This function is used inside `deduplicate_studies` to resolve duplication of
+# cohort values for a single individual. If this function is called, then
+# there are at least 2 distinct, non-NA values in the `cohort` column that are
+# assigned to this individual. This function handles two special cases and
+# defaults to just reporting the duplication if neither special case applies:
+#   1. NPS-AD reports the `cohort` of all ROSMAP samples as "ROSMAP" rather than
+#      identifying them as "ROS" or "MAP" separately. All of these samples exist
+#      in Diverse Cohorts or ROSMAP 1.0 metadata, which has the correct
+#      separation into "ROS" and "MAP", so we replace NPS-AD's ROSMAP `cohort`
+#      values with the correct values from DC/ROSMAP 1.0.
+#   2. Mayo Clinic 1.0 metadata reports cohort as "Mayo Clinic" while the same
+#      samples in Diverse Cohorts are reported as "Banner". This difference
+#      is ignored as only the Diverse Cohorts metadata is used directly.
+#
+# Arguments:
+#   meta_tmp - a data frame with 2 or more rows, where all rows have the same
+#     individual ID and there are 2 or more distinct values in the `cohort`
+#     column
+#   leftover - a vector of unique values from <col_name> for this individual,
+#     which has had `NA` values removed
+#   col_name - the name of the column being handled ("cohort")
+#   report_string - the string that gets printed out if there is a real
+#     difference between values that is not due to precision. The string
+#     contains the `individualID`, column name, and unique values in the column.
+#
+# Returns:
+#   meta_tmp, which will have some `cohort` values replaced if the original
+#   value was "ROSMAP". Other values and columns are left as-is.
 deduplicate_cohort <- function(meta_tmp, leftover, col_name, spec, report_string) {
   # If there is more than one left over value and the values don't meet the two
   # special cases below, report it but don't try to resolve duplication.

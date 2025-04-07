@@ -1,3 +1,9 @@
+# This file contains one function per GENESIS data set that performs all
+# harmonization operations. Specific changes to each data set are documented
+# in the comments of the corresponding functions. These functions are tied to
+# specific versions of each source file and may need to be updated if the source
+# metadata file is updated.
+
 # Harmonize Diverse Cohorts metadata
 #
 # Makes minor edits to the Diverse Cohorts individual metadata file, which was
@@ -462,8 +468,6 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
     )
 }
 
-
-# New data sets ----------------------------------------------------------------
 
 # Harmonize NPS-AD / GEN-A1 metadata
 #
