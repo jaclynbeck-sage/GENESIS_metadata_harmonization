@@ -101,3 +101,18 @@ default:
     upenn: "UPenn"
     whicap: "WHICAP"
     none: ""
+
+  study:
+    diverse_cohorts: "AMP-AD_DiverseCohorts"
+    mayo: "MayoRNAseq"
+    mc_brad: "MC-BrAD"
+    mc_snrna: "MC_snRNA"
+    mcmps: "MCMPS"
+    mit_rosmap: "MIT_ROSMAP_Multiomics"
+    msbb: "MSBB"
+    nps_ad: "NPS-AD"
+    rosmap: "ROSMAP"
+    sea_ad: "SEA-AD"
+    smib_ad: "SMIB-AD"
+    snRNA_BA10: "snRNAseqPFC_BA10"
+    snRNA_trem2: "snRNAseqAD_TREM2"

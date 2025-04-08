@@ -1,4 +1,4 @@
-# This script harmonizes and de-duplicates AMP-AD 1.0 metadata (MayoRNASeq,
+# This script harmonizes and de-duplicates AMP-AD 1.0 metadata (MayoRNAseq,
 # MSBB, and ROSMAP) and Diverse Cohorts metadata, filling in missing information
 # where there is sample overlap between the four files. The de-duplicated data
 # is then used as the standard to check quality of other overlapping GENESIS
@@ -8,7 +8,7 @@
 # directly by multiple GENESIS studies (GEN-A2, GEN-A8, GEN-A13, GEN-B6,
 # GEN-B4), so they are uploaded to Synapse for GENESIS use.
 #
-# The MayoRNASeq 1.0 and MSBB 1.0 data sets are not used directly by any study
+# The MayoRNAseq 1.0 and MSBB 1.0 data sets are not used directly by any study
 # so they are not uploaded to Synapse, to avoid confusion. However, several
 # studies (GEN-A1, GEN-A11, GEN-A12) have samples from these data sets in their
 # own metadata that are missing information. The missing information will be
@@ -25,7 +25,7 @@ spec <- config::get(file = "GENESIS_harmonization.yml")
 source("util_functions.R")
 source("dataset_specific_functions.R")
 
-UPLOAD_SYNID <- "syn64759869"
+UPLOAD_SYNID <- "syn65931571"
 
 syn_ids <- list(
   "Diverse_Cohorts" = "syn51757646.20",
@@ -41,7 +41,7 @@ df_list <- list()
 
 # MayoRNAseq -------------------------------------------------------------------
 
-# GEN-A11 and GEN-A12 have > half their samples from the original MayoRNASeq
+# GEN-A11 and GEN-A12 have > half their samples from the original MayoRNAseq
 # metadata. They also share four individuals between them, all of which come
 # from original Mayo metadata.
 
@@ -51,21 +51,19 @@ meta <- read.csv(meta_file$path)
 colnames(meta)
 
 print_qc(meta,
+  pmi_col = "pmi",
   isHispanic_col = "ethnicity",
   cerad_col = "CERAD",
   thal_col = "Thal"
 )
 
-meta_new <- harmonize_MayoRNASeq(meta, spec) |>
-  mutate(
-    source = "MayoRNASeq",
-    filename = meta_file$name
-  )
+meta_new <- harmonize_MayoRNAseq(meta, spec) |>
+  mutate(filename = meta_file$name)
 
 print_qc(meta_new)
 validate_values(meta_new, spec)
 
-df_list[["MayoRNASeq"]] <- meta_new
+df_list[["MayoRNAseq"]] <- meta_new
 
 
 # MSBB -------------------------------------------------------------------------
@@ -78,15 +76,13 @@ meta <- read.csv(meta_file$path)
 colnames(meta)
 
 print_qc(meta,
+  pmi_col = "pmi",
   isHispanic_col = "ethnicity",
   cerad_col = "CERAD"
 )
 
 meta_new <- harmonize_MSBB(meta, spec) |>
-  mutate(
-    source = "MSBB",
-    filename = meta_file$name
-  )
+  mutate(filename = meta_file$name)
 
 print_qc(meta_new)
 validate_values(meta_new, spec)
@@ -105,6 +101,7 @@ colnames(meta)
 
 print_qc(meta,
   ageDeath_col = "age_death",
+  pmi_col = "pmi",
   sex_col = "msex",
   isHispanic_col = "spanish",
   apoe_col = "apoe_genotype",
@@ -113,10 +110,7 @@ print_qc(meta,
 )
 
 meta_new <- harmonize_ROSMAP(meta, spec) |>
-  mutate(
-    source = "ROSMAP",
-    filename = meta_file$name
-  )
+  mutate(filename = meta_file$name)
 
 print_qc(meta_new)
 validate_values(meta_new, spec)
@@ -140,13 +134,10 @@ meta <- read.csv(meta_file$path)
 
 colnames(meta)
 
-print_qc(meta, pmi_col = "PMI")
+print_qc(meta)
 
 meta_new <- harmonize_Diverse_Cohorts(meta, spec) |>
-  mutate(
-    source = "Diverse Cohorts",
-    filename = meta_file$name
-  )
+  mutate(filename = meta_file$name)
 
 print_qc(meta_new)
 validate_values(meta_new, spec)
@@ -172,8 +163,8 @@ saveRDS(meta_all, file.path("data", "tmp", "AMP1.0_DiverseCohorts_harmonized.rds
 new_files <- sapply(df_list, function(meta_old) {
   meta_new <- subset(meta_all, filename == unique(meta_old$filename)) |>
     select(all_of(colnames(meta_old))) |>
-    # Remove the source file columns we added
-    select(-source, -filename)
+    # Remove the source file column we added
+    select(-filename)
 
   new_file <- str_replace(
     basename(unique(meta_old$filename)),

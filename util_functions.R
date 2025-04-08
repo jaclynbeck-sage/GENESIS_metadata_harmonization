@@ -8,8 +8,8 @@
 # metadata table
 expectedColumns <- c(
   "individualID", "dataContributionGroup", "cohort", "sex", "race",
-  "isHispanic", "ageDeath", "pmi", "apoeGenotype", "apoe4Status", "amyCerad",
-  "amyAny", "amyThal", "amyA", "Braak", "bScore"
+  "isHispanic", "ageDeath", "PMI", "apoeGenotype", "apoe4Status", "amyCerad",
+  "amyAny", "amyThal", "amyA", "Braak", "bScore", "study"
 )
 
 
@@ -19,7 +19,7 @@ expectedColumns <- c(
 #   1. Reports which columns are missing from the data frame
 #   2. Reports how many NA values are in each column
 #   3. Prints tables of unique values in each column vs the count of each value,
-#      excluding `ageDeath` and `pmi`.
+#      excluding `ageDeath` and `PMI`.
 #   4. Checks if there are any `ageDeath` values of 90 or over that are not
 #      censored as "90+".
 #
@@ -37,7 +37,7 @@ expectedColumns <- c(
 print_qc <- function(df,
                      ageDeath_col = "ageDeath",
                      isHispanic_col = "isHispanic",
-                     pmi_col = "pmi",
+                     pmi_col = "PMI",
                      race_col = "race",
                      sex_col = "sex",
                      apoe_col = "apoeGenotype",
@@ -98,7 +98,7 @@ print_qc <- function(df,
 # Given a data frame of harmonized metadata, this function validates the following:
 #   1. There are no values in any harmonized field that aren't in the data dictionary
 #   2. There are no `ageDeath` values above 89
-#   3. The `ageDeath` and `pmi` columns only have numbers, NAs, or "90+"
+#   3. The `ageDeath` and `PMI` columns only have numbers, NAs, or "90+"
 #   4. Columns whose values are derived from other columns (`apoe4Status`,
 #      `amyA`, `amyAny`, and `bScore`) have the correctly-derived values. This
 #      check is needed to catch any accidental differences introduced by filling
@@ -143,15 +143,15 @@ validate_values <- function(metadata, spec, verbose = TRUE) {
   }
 
   # PMI should have only NA or numbers
-  pmi <- na.omit(metadata$pmi)
+  pmi <- na.omit(metadata$PMI)
   if (length(pmi) > 0 && !is.numeric(pmi)) {
-    cat("X  pmi is not numeric\n")
+    cat("X  PMI is not numeric\n")
   } else if (verbose) {
-    cat("OK pmi\n")
+    cat("OK PMI\n")
   }
 
   # Other columns should have only string values that exist in the dictionary
-  cols_check <- setdiff(expectedColumns, c("individualID", "ageDeath", "pmi"))
+  cols_check <- setdiff(expectedColumns, c("individualID", "ageDeath", "PMI"))
 
   for (col_name in cols_check) {
     values <- metadata[, col_name]
@@ -434,7 +434,8 @@ write_metadata <- function(metadata, filename) {
 #
 # This is a wrapper around `synStore` to shorten code slightly. It uploads a
 # file to Synapse but doesn't increment the file's version unless the contents
-# are different than what is currently on Synapse.
+# are different than what is currently on Synapse. It also doesn't erase any
+# annotations on the file in Synapse.
 #
 # Arguments:
 #   filename - the full path and name of the file to upload
@@ -445,7 +446,7 @@ write_metadata <- function(metadata, filename) {
 #   a Synapse `File` object containing information about the uploaded file
 synapse_upload <- function(filename, folder_id) {
   syn_file <- File(filename, parent = folder_id)
-  syn_file <- synStore(syn_file, forceVersion = FALSE)
+  syn_file <- synStore(syn_file, forceVersion = FALSE, set_annotations = FALSE)
   return(syn_file)
 }
 
@@ -530,7 +531,7 @@ check_new_versions <- function(syn_id_list) {
 #   2. For columns where some rows have "missing or unknown" and some have a
 #      unique value other than that, replace "missing or unknown" with the
 #      unique value.
-#   3. For the ageDeath/pmi columns where rows have different numbers, report
+#   3. For the ageDeath/PMI columns where rows have different numbers, report
 #      the difference but leave the values as-is. If rows disagree only because
 #      of precision, nothing is reported.
 #   4. For cases where cohort values disagree, resolve as follows:
@@ -572,7 +573,7 @@ check_new_versions <- function(syn_id_list) {
 deduplicate_studies <- function(df_list,
                                 spec,
                                 include_cols = expectedColumns,
-                                exclude_cols = c(),
+                                exclude_cols = c("study"),
                                 verbose = TRUE) {
   # Make sure certain fields in each data frame are of the same type. Also
   # convert MSSM-style individual IDs to Diverse Cohorts-style IDs.
@@ -648,7 +649,7 @@ deduplicate_studies <- function(df_list,
         } else {
           # More than 1 value left after omission of NA and "missing or unknown".
           # Do some column-specific handling of duplicates
-          if (col_name %in% c("ageDeath", "pmi")) {
+          if (col_name %in% c("ageDeath", "PMI")) {
             meta_tmp <- deduplicate_ageDeath_pmi(meta_tmp, leftover, col_name, report_string)
           } else if (col_name == "cohort") {
             meta_tmp <- deduplicate_cohort(meta_tmp, leftover, col_name, spec, report_string)
@@ -680,7 +681,7 @@ deduplicate_studies <- function(df_list,
 #
 # This function is used inside `deduplicate_studies` to resolve duplication of
 # age and PMI data for a single individual. If this function is called, then
-# there are at least 2 distinct, non-NA values in the `ageDeath` or `pmi`
+# there are at least 2 distinct, non-NA values in the `ageDeath` or `PMI`
 # column that are assigned to this individual. This function checks whether the
 # numbers differ only by precision (e.g. 3.5 vs 3.547), or if the numbers are
 # completely different (e.g. 4 vs 10). The former case is ignored, and the
@@ -691,10 +692,10 @@ deduplicate_studies <- function(df_list,
 # Arguments:
 #   meta_tmp - a data frame with 2 or more rows, where all rows have the same
 #     individual ID and there are 2 or more distinct values in the `ageDeath`
-#     and/or `pmi` column
+#     and/or `PMI` column
 #   leftover - a vector of unique values from <col_name> for this individual,
 #     which has had `NA` values removed
-#   col_name - the name of the column being handled, either "ageDeath" or "pmi"
+#   col_name - the name of the column being handled, either "ageDeath" or "PMI"
 #   report_string - the string that gets printed out if there is a real
 #     difference between values that is not due to precision. The string
 #     contains the `individualID`, column name, and unique values in the column.

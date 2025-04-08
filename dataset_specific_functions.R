@@ -11,13 +11,12 @@
 # for GENESIS. Source metadata file: syn51757646 (version 20) on Synapse.
 #
 # Modifications needed for version 20:
-#   * Rename `PMI` column to `pmi`
-#   * Change `ageDeath` and `pmi` value "missing or unknown" to `NA`
-#   * Change `pmi` to a numeric column
+#   * Change `ageDeath` and `PMI` value "missing or unknown" to `NA`
+#   * Change `PMI` to a numeric column
 #   * Rename `isHispanic` values from ["TRUE", "FALSE"] to ["True", "False"]
 #   * Rename `race` value "Black" to "Black or African American"
 #   * Fixes some `amyA` values that don't match their `amyThal` values
-#   * Add `apoeStatus` column
+#   * Add `apoeStatus` and `study` column
 #
 # NOTE: There are 8 individuals in v20 of the data with incorrect `amyCerad`
 # values, which are corrected manually here based on comparison with ROSMAP
@@ -40,12 +39,11 @@ harmonize_Diverse_Cohorts <- function(metadata, spec) {
   )
 
   metadata |>
-    dplyr::rename(pmi = PMI) |>
     dplyr::mutate(
       ageDeath = censor_ages(ageDeath, spec),
-      pmi = case_match(pmi,
+      PMI = case_match(PMI,
         spec$missing ~ NA,
-        .default = suppressWarnings(as.numeric(pmi))
+        .default = suppressWarnings(as.numeric(PMI))
       ),
       isHispanic = case_match(isHispanic,
         "TRUE" ~ spec$isHispanic$hisp_true,
@@ -65,20 +63,22 @@ harmonize_Diverse_Cohorts <- function(metadata, spec) {
       ),
       ##
       # Update based on manual corrections
-      amyAny = get_amyAny(amyCerad, spec)
+      amyAny = get_amyAny(amyCerad, spec),
+      study = spec$study$diverse_cohorts
     )
 }
 
 
-# Harmonize MayoRNASeq metadata
+# Harmonize MayoRNAseq metadata
 #
-# Modifies the original MayoRNASeq individual metadata to conform to the GENESIS
+# Modifies the original MayoRNAseq individual metadata to conform to the GENESIS
 # data dictionary. This file is not used directly by any GENESIS studies but is
 # instead used to fill in missing information in GENESIS metadata that uses
 # these samples. Source metadata file: syn23277389 (version 7) on Synapse.
 #
 # Modifications needed for version 7:
 #   * Rename columns:
+#     * `pmi` => `PMI`
 #     * `ethnicity` => `isHispanic`
 #     * `CERAD` => `amyCerad`
 #     * `Thal` => `amyThal`
@@ -91,7 +91,8 @@ harmonize_Diverse_Cohorts <- function(metadata, spec) {
 #   * Add `apoeStatus`, `amyA`, `amyAny`, and `bScore` columns
 #   * Replace NA values in the `isHispanic`, `race`, `sex`, `apoeGenotype`,
 #       `amyCerad`, `amyThal`, and `Braak` columns with "missing or unknown"
-#   * Add columns `dataContributionGroup` = "Mayo" and `cohort` = "Mayo Clinic"
+#   * Add columns `dataContributionGroup` = "Mayo", `cohort` = "Mayo Clinic",
+#     and `study` = "MayoRNAseq"
 #
 # NOTE: There is one individual with an incorrect `race` value, which is
 # corrected manually here based on updated information from Diverse Cohorts.
@@ -106,9 +107,10 @@ harmonize_Diverse_Cohorts <- function(metadata, spec) {
 #   a `data.frame` with all relevant fields harmonized to the GENESIS data
 #   dictionary. Columns not defined in the data dictionary are left as-is.
 #
-harmonize_MayoRNASeq <- function(metadata, spec) {
+harmonize_MayoRNAseq <- function(metadata, spec) {
   metadata |>
     rename(
+      PMI = pmi,
       isHispanic = ethnicity,
       amyCerad = CERAD,
       amyThal = Thal
@@ -153,7 +155,8 @@ harmonize_MayoRNASeq <- function(metadata, spec) {
       Braak = to_Braak_stage(floor(Braak), spec),
       bScore = get_bScore(Braak, spec),
       cohort = spec$cohort$mayo,
-      dataContributionGroup = spec$dataContributionGroup$mayo
+      dataContributionGroup = spec$dataContributionGroup$mayo,
+      study = spec$study$mayo
     )
 }
 
@@ -167,15 +170,16 @@ harmonize_MayoRNASeq <- function(metadata, spec) {
 #
 # Modifications needed for version 9:
 #   * Rename columns:
+#     * `pmi` => `PMI`
 #     * `ethnicity` => `isHispanic`
 #     * `CERAD` => `amyCerad`
 #     * `individualIdSource` => `dataContributionGroup`
-#   * Convert `pmi` from minutes to hours
+#   * Convert `PMI` from minutes to hours
 #   * Change `isHispanic` and `race` values to conform to the data dictionary
 #   * Change `NA` values in the `isHispanic`, `race`, `apoeGenotype`,
 #       `amyCerad`, and `Braak` columns to "missing or unknown"
 #   * Add `apoe4Status`, `amyAny`, `amyA`, and `bScore` columns
-#   * Add `cohort` = "Mt Sinai Brain Bank" column
+#   * Add `cohort` = "Mt Sinai Brain Bank" and `study` = "MSBB"
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -194,12 +198,13 @@ harmonize_MayoRNASeq <- function(metadata, spec) {
 harmonize_MSBB <- function(metadata, spec) {
   metadata |>
     rename(
+      PMI = pmi,
       isHispanic = ethnicity,
       amyCerad = CERAD,
       dataContributionGroup = individualIdSource
     ) |>
     mutate(
-      pmi = pmi / 60, # PMI is in minutes
+      PMI = PMI / 60, # PMI is in minutes
       isHispanic = case_match(isHispanic,
         NA ~ spec$missing,
         c("A", "B", "W") ~ spec$isHispanic$hisp_false,
@@ -251,7 +256,8 @@ harmonize_MSBB <- function(metadata, spec) {
       ),
       ##
       bScore = get_bScore(Braak, spec),
-      cohort = spec$cohort$msbb
+      cohort = spec$cohort$msbb,
+      study = spec$study$msbb
     )
 }
 
@@ -267,6 +273,7 @@ harmonize_MSBB <- function(metadata, spec) {
 #   * Rename multiple columns:
 #     * `spanish` => `isHispanic`
 #     * `age_death` => `ageDeath`
+#     * `pmi` => `PMI`
 #     * `msex` => `sex`
 #     * `apoe_genotype` => `apoeGenotype`
 #     * `ceradsc` => `amyCerad`
@@ -285,7 +292,7 @@ harmonize_MSBB <- function(metadata, spec) {
 #   * Convert `amyCerad` numerical values to values in data dictionary
 #   * Add `apoe4status`, `bScore`, `amyA`, and `amyAny` columns
 #   * Add `amyThal` and `amyA` columns with all "missing or unknown" values
-#   * Add `dataContributionGroup` with value = "Rush"
+#   * Add `dataContributionGroup` = "Rush" and `study` = "ROSMAP"
 #
 # NOTE: There is one individual with an incorrect value for `isHispanic`, which
 # is manually corrected here based on updated data from Diverse Cohorts.
@@ -305,6 +312,7 @@ harmonize_ROSMAP <- function(metadata, spec) {
     dplyr::rename(
       isHispanic = spanish,
       ageDeath = age_death,
+      PMI = pmi,
       sex = msex,
       apoeGenotype = apoe_genotype,
       amyCerad = ceradsc,
@@ -359,7 +367,8 @@ harmonize_ROSMAP <- function(metadata, spec) {
       amyAny = get_amyAny(amyCerad, spec),
       amyThal = spec$missing,
       amyA = spec$missing,
-      dataContributionGroup = spec$dataContributionGroup$rush
+      dataContributionGroup = spec$dataContributionGroup$rush,
+      study = spec$study$rosmap
     )
 }
 
@@ -380,6 +389,7 @@ harmonize_ROSMAP <- function(metadata, spec) {
 #
 # Modifications needed for version 7:
 #   * Rename several columns:
+#     * `pmi` => `PMI`
 #     * `Hispanic.Latino` => `isHispanic`
 #     * `CERAD` => `amyCerad`
 #     * `Thal phase` => `amyThal`
@@ -395,8 +405,8 @@ harmonize_ROSMAP <- function(metadata, spec) {
 #       `amyThal`, and `amyCerad` columns to "missing or unknown"
 #   * Update `apoe4Status` column with values in data dictionary
 #   * Add `bScore`, `amyA`, and `amyAny` columns
-#   * Add `cohort` ("SEA-AD") and `dataContributionGroup` ("Allen Institute")
-#       columns.
+#   * Add `cohort` ("SEA-AD"), `dataContributionGroup` ("Allen Institute")
+#       and `study` ("SEA-AD")
 #
 # Arguments:
 #   metadata_synapse - a `data.frame` of metadata from the Synapse metadata
@@ -423,6 +433,7 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
 
   meta |>
     dplyr::rename(
+      PMI = pmi,
       isHispanic = "Hispanic/Latino",
       amyCerad = CERAD,
       amyThal = "Thal phase"
@@ -464,7 +475,8 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
       Braak = to_Braak_stage(Braak, spec),
       bScore = get_bScore(Braak, spec),
       cohort = spec$cohort$sea_ad,
-      dataContributionGroup = spec$dataContributionGroup$allen_institute
+      dataContributionGroup = spec$dataContributionGroup$allen_institute,
+      study = spec$study$sea_ad
     )
 }
 
@@ -485,7 +497,7 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
 # known discrepancies to the DC / 1.0 data, which are manually corrected here.
 # The age column will be fixed in a future version of the NPS-AD metadata.
 #
-# Note: Even after de-duplication, most harmonized columns (ageDeath, pmi, sex,
+# Note: Even after de-duplication, most harmonized columns (ageDeath, PMI, sex,
 # race, isHispanic, apoeGenotype, amyCerad, Braak) that have values that
 # disagree with AMP-AD 1.0 and Diverse Cohorts data. NPS-AD determined these
 # values algorithmically or by re-processing data, or assumes these are
@@ -496,13 +508,12 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
 #   * Merge neuropathology data with individual metadata
 #   * Rename columns:
 #     * `ethnicity` => `isHispanic`
-#     * `PMI` => `pmi`
 #     * `CERAD` => `amyCerad`
 #     * `BRAAK_AD` => `Braak`
 #   * Fix two values in `diverseCohortsIndividualIDFormat` to match the correct
 #     format in Diverse Cohorts
 #   * Manually correct `ageDeath` column as described above
-#   * Convert `pmi` values from minutes to hours
+#   * Convert `PMI` values from minutes to hours
 #   * Convert `isHispanic` values to "True" or "False"
 #   * Convert Braak numerical values to Roman numerals
 #   * Convert `amyCerad` numerical values to values in data dictionary
@@ -514,6 +525,7 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
 #     cohort.
 #   * Use Diverse Cohorts and AMP-AD 1.0 data to get the correct `cohort` value
 #     for samples marked as "ROSMAP"
+#   * Add `study` = "NPS-AD"
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -541,7 +553,6 @@ harmonize_NPS_AD <- function(metadata, neuropath, harmonized_baseline, spec) {
     select(-Component) |>
     rename(
       isHispanic = ethnicity,
-      pmi = PMI,
       amyCerad = CERAD,
       Braak = BRAAK_AD
     ) |>
@@ -567,7 +578,7 @@ harmonize_NPS_AD <- function(metadata, neuropath, harmonized_baseline, spec) {
         .default = ageDeath
       ),
       ##
-      pmi = pmi / 60,
+      PMI = PMI / 60,
       pmiUnits = "hours",
       race = case_match(race,
         NA ~ spec$missing,
@@ -608,7 +619,8 @@ harmonize_NPS_AD <- function(metadata, neuropath, harmonized_baseline, spec) {
         c(spec$cohort$ros, spec$cohort$map) ~ spec$dataContributionGroup$rush,
         "ROSMAP" ~ spec$dataContributionGroup$rush,
         .default = ""
-      )
+      ),
+      study = spec$study$nps_ad
     )
 
   # Pull missing information from AMP-AD 1.0 and Diverse Cohorts metadata,
@@ -621,7 +633,7 @@ harmonize_NPS_AD <- function(metadata, neuropath, harmonized_baseline, spec) {
     spec,
     # NPS-AD did their own re-processing of these values, which should not be
     # over-written by any other data set.
-    exclude_cols = c("amyCerad", "amyAny", "Braak", "bScore"),
+    exclude_cols = c("amyCerad", "amyAny", "Braak", "bScore", "study"),
     verbose = FALSE
   ) |>
     subset(source == "GEN-A1") |>
@@ -639,6 +651,7 @@ harmonize_NPS_AD <- function(metadata, neuropath, harmonized_baseline, spec) {
 #
 # Modifications needed for version 1:
 #   * Rename columns:
+#     * `pmi` => `PMI`
 #     * `ethnicity` => `isHispanic`
 #     * `CERAD` => `amyCerad`
 #   * Censor `ageDeath` values over 90
@@ -649,6 +662,7 @@ harmonize_NPS_AD <- function(metadata, neuropath, harmonized_baseline, spec) {
 #   * Add `apoe4Status`, `amyAny`, `amyThal`, `amyA`, and `bScore` columns
 #   * Add a `cohort` column with either "SMRI" or "Banner"
 #   * Add a `dataContributionGroup` column with values for Stanley and Banner
+#   * Add `study` = "SMIB_AD"
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -663,6 +677,7 @@ harmonize_NPS_AD <- function(metadata, neuropath, harmonized_baseline, spec) {
 harmonize_SMIB_AD <- function(metadata, spec) {
   metadata |>
     rename(
+      PMI = pmi,
       isHispanic = ethnicity,
       amyCerad = CERAD
     ) |>
@@ -691,7 +706,8 @@ harmonize_SMIB_AD <- function(metadata, spec) {
       dataContributionGroup = case_match(cohort,
         spec$cohort$smri ~ spec$dataContributionGroup$stanley,
         .default = spec$dataContributionGroup$banner
-      )
+      ),
+      study = spec$study$smib_ad
     )
 }
 
@@ -701,10 +717,11 @@ harmonize_SMIB_AD <- function(metadata, spec) {
 # Modifies the MCMPS individual metadata file to conform to the GENESIS data
 # dictionary. Source metadata file: syn25891193 (version 1) on Synapse. Note:
 # these samples come from living tissue and do not have a value for `ageDeath`
-# or `pmi`.
+# or `PMI`.
 #
 # Modifications needed for version 1:
 #   * Rename columns:
+#     * `pmi` => `PMI`
 #     * `ethnicity` => `isHispanic`
 #     * `CERAD` => `amyCerad`
 #   * Trim extra spaces from `race` values
@@ -714,6 +731,7 @@ harmonize_SMIB_AD <- function(metadata, spec) {
 #   * Add `apoe4Status`, `amyAny`, `amyThal`, `amyA`, and `bScore` columns
 #   * Add a `cohort` column containing "Mayo Clinic"
 #   * Add a `dataContributionGroup` column containing "Mayo"
+#   * Add `study` = "MCMPS"
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -728,6 +746,7 @@ harmonize_SMIB_AD <- function(metadata, spec) {
 harmonize_MCMPS <- function(metadata, spec) {
   metadata |>
     rename(
+      PMI = pmi,
       isHispanic = ethnicity,
       amyCerad = CERAD
     ) |>
@@ -752,7 +771,8 @@ harmonize_MCMPS <- function(metadata, spec) {
       Braak = spec$missing,
       bScore = spec$missing,
       cohort = spec$cohort$mayo,
-      dataContributionGroup = spec$dataContributionGroup$mayo
+      dataContributionGroup = spec$dataContributionGroup$mayo,
+      study = spec$study$mcmps
     )
 }
 
@@ -767,6 +787,7 @@ harmonize_MCMPS <- function(metadata, spec) {
 #
 # Modifications needed for version 1:
 #   * Rename columns:
+#     * `pmi` => `PMI`
 #     * `ethnicity` => `isHispanic`
 #     * `CERAD` => `amyCerad`
 #   * Change `ageDeath` values of "90_or_over" to "90+"
@@ -776,6 +797,7 @@ harmonize_MCMPS <- function(metadata, spec) {
 #   * Add `apoe4Status`, `amyAny`, `amyThal`, `amyA`, and `bScore` columns
 #   * Add a `cohort` column containing "Mayo Clinic"
 #   * Add a `dataContributionGroup` column containing "Mayo"
+#   * Add `study` = "MC_snRNA
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -792,6 +814,7 @@ harmonize_MCMPS <- function(metadata, spec) {
 harmonize_MC_snRNA <- function(metadata, harmonized_baseline, spec) {
   meta_new <- metadata |>
     rename(
+      PMI = pmi,
       isHispanic = ethnicity,
       amyCerad = CERAD
     ) |>
@@ -807,7 +830,8 @@ harmonize_MC_snRNA <- function(metadata, harmonized_baseline, spec) {
       Braak = to_Braak_stage(floor(Braak), spec),
       bScore = get_bScore(Braak, spec),
       dataContributionGroup = spec$dataContributionGroup$mayo,
-      cohort = spec$cohort$mayo
+      cohort = spec$cohort$mayo,
+      study = spec$study$mc_snrna
     )
 
   # Pull missing information from AMP-AD 1.0 and Diverse Cohorts metadata
@@ -836,6 +860,7 @@ harmonize_MC_snRNA <- function(metadata, harmonized_baseline, spec) {
 #
 # Modifications needed for version 2:
 #   * Rename columns:
+#     * `pmi` => `PMI`
 #     * `ethnicity` => `isHispanic`
 #     * `CERAD` => `amyCerad`
 #     * `Thal` => `amyThal`
@@ -847,6 +872,7 @@ harmonize_MC_snRNA <- function(metadata, harmonized_baseline, spec) {
 #   * Add `apoe4Status`, `amyAny`, `amyA`, and `bScore` columns
 #   * Add a `cohort` column containing "Mayo Clinic"
 #   * Add a `dataContributionGroup` column containing "Mayo"
+#   * Add `study` = "MC-BrAD"
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -863,6 +889,7 @@ harmonize_MC_snRNA <- function(metadata, harmonized_baseline, spec) {
 harmonize_MC_BrAD <- function(metadata, harmonized_baseline, spec) {
   meta_new <- metadata |>
     rename(
+      PMI = pmi,
       isHispanic = ethnicity,
       amyCerad = CERAD,
       amyThal = Thal
@@ -887,20 +914,18 @@ harmonize_MC_BrAD <- function(metadata, harmonized_baseline, spec) {
       Braak = to_Braak_stage(floor(Braak), spec),
       bScore = get_bScore(Braak, spec),
       dataContributionGroup = spec$dataContributionGroup$mayo,
-      cohort = spec$cohort$mayo
+      cohort = spec$cohort$mayo,
+      study = spec$study$mc_brad
     )
 
   # Pull missing information from AMP-AD 1.0 and Diverse Cohorts metadata
-  meta_new <- meta_new |>
-    mutate(source = "GEN-A12")
-
   meta_new <- deduplicate_studies(
     list(meta_new, harmonized_baseline),
     spec,
     verbose = FALSE
   ) |>
-    subset(source == "GEN-A12") |>
-    select(all_of(colnames(meta_new)), -source)
+    subset(study == spec$study$mc_brad) |>
+    select(all_of(colnames(meta_new)))
 
   return(meta_new)
 }

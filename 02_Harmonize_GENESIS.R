@@ -31,13 +31,13 @@ source("dataset_specific_functions.R")
 syn_ids <- list(
   "GEN-A1" = "syn55251012.4", # NPS-AD
   "GEN-A1_neuropath" = "syn55251003.1", # NPS-AD neuropathology
-  "ROSMAP" = "syn64759878.4", # Harmonized file, for GEN-A2, GEN-A8, GEN-A13, GEN-B6
+  "ROSMAP" = "syn64759878.5", # Harmonized file, for GEN-A2, GEN-A8, GEN-A13, GEN-B6
   "SEA-AD" = "syn31149116.7", # SEA-AD, for GEN-A4 and GEN-B5
   "GEN-A9" = "syn22432749.1", # SMIB-AD
   "GEN-A10" = "syn25891193.1", # MCMPS
   "GEN-A11" = "syn31563038.1", # MC_snRNA
   "GEN-A12" = "syn51401700.2", # MC-BrAD
-  "Diverse_Cohorts" = "syn64759872.5" # Harmonized file, for GEN-B4
+  "Diverse_Cohorts" = "syn64759872.6" # Harmonized file, for GEN-B4
   # "GEN-B1" = "TBD",
   # "GEN-B2" = "TBD",
   # "GEN-B3" = "TBD"
@@ -46,7 +46,7 @@ syn_ids <- list(
 synLogin()
 check_new_versions(syn_ids)
 
-UPLOAD_SYNID <- "syn64759869"
+UPLOAD_SYNID <- "syn65931571"
 
 manifest <- c()
 
@@ -68,7 +68,7 @@ neuropath <- read.csv(neuro_file$path) |>
 
 colnames(meta)
 
-print_qc(meta, isHispanic_col = "ethnicity", pmi_col = "PMI", cerad_col = "CERAD")
+print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
 print_qc(neuropath, cerad_col = "CERAD", braak_col = "BRAAK_AD")
 
 meta_new <- harmonize_NPS_AD(meta, neuropath, harmonized_baseline, spec)
@@ -83,7 +83,7 @@ manifest <- rbind(
   manifest,
   data.frame(
     GENESIS_study = "GEN-A1",
-    ADKP_study = "NPS-AD",
+    study = spec$study$nps_ad,
     metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
   )
 )
@@ -96,7 +96,10 @@ manifest <- rbind(
   manifest,
   data.frame(
     GENESIS_study = c("GEN-A2", "GEN-A8", "GEN-A13", "GEN-B6"),
-    ADKP_study = c("ROSMAP", "snRNAseqAD_TREM2", "snRNAseqPFC_BA10", "MIT_ROSMAP_Multiomics"),
+    study = c(
+      spec$study$rosmap, spec$study$snRNA_trem2,
+      spec$study$snRNA_BA10, spec$study$mit_rosmap
+    ),
     metadata_synid = syn_ids[["ROSMAP"]]
   )
 )
@@ -122,7 +125,7 @@ meta_sea_ad <- read_xlsx(sea_ad_file)
 colnames(meta)
 colnames(meta_sea_ad)
 
-print_qc(meta, cerad_col = "CERAD", thal_col = "Thal phase")
+print_qc(meta, pmi_col = "pmi", cerad_col = "CERAD", thal_col = "Thal phase")
 print_qc(meta_sea_ad, isHispanic_col = "Hispanic/Latino")
 
 meta_new <- harmonize_SEA_AD(meta, meta_sea_ad, spec)
@@ -139,7 +142,7 @@ manifest <- rbind(
   manifest,
   data.frame(
     GENESIS_study = c("GEN-A4", "GEN-B5"),
-    ADKP_study = c("SEA-AD", "SEA-AD"),
+    study = spec$study$sea_ad,
     metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
   )
 )
@@ -160,7 +163,7 @@ meta <- read.csv(meta_file$path)
 
 colnames(meta)
 
-print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
+print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity", cerad_col = "CERAD")
 
 meta_new <- harmonize_SMIB_AD(meta, spec)
 
@@ -174,7 +177,7 @@ manifest <- rbind(
   manifest,
   data.frame(
     GENESIS_study = "GEN-A9",
-    ADKP_study = "SMIB-AD",
+    study = spec$study$smib_ad,
     metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
   )
 )
@@ -190,7 +193,7 @@ meta <- read.csv(meta_file$path)
 
 colnames(meta)
 
-print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
+print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity", cerad_col = "CERAD")
 
 meta_new <- harmonize_MCMPS(meta, spec)
 
@@ -204,7 +207,7 @@ manifest <- rbind(
   manifest,
   data.frame(
     GENESIS_study = "GEN-A10",
-    ADKP_study = "MCMPS",
+    study = spec$study$mcmps,
     metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
   )
 )
@@ -221,7 +224,7 @@ meta <- read.csv(meta_file$path)
 
 colnames(meta)
 
-print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
+print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity", cerad_col = "CERAD")
 
 meta_new <- harmonize_MC_snRNA(meta, harmonized_baseline, spec)
 
@@ -235,7 +238,7 @@ manifest <- rbind(
   manifest,
   data.frame(
     GENESIS_study = "GEN-A11",
-    ADKP_study = "MC_snRNA",
+    study = spec$study$mc_snrna,
     metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
   )
 )
@@ -252,7 +255,8 @@ meta <- read.csv(meta_file$path)
 
 colnames(meta)
 
-print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD", thal_col = "Thal")
+print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity",
+         cerad_col = "CERAD", thal_col = "Thal")
 
 meta_new <- harmonize_MC_BrAD(meta, harmonized_baseline, spec)
 
@@ -266,7 +270,7 @@ manifest <- rbind(
   manifest,
   data.frame(
     GENESIS_study = "GEN-A12",
-    ADKP_study = "MC-BrAD",
+    study = spec$study$mc_brad,
     metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
   )
 )
@@ -279,7 +283,7 @@ manifest <- rbind(
   manifest,
   data.frame(
     GENESIS_study = "GEN-B4",
-    ADKP_study = "AMP-AD_DiverseCohorts",
+    study = spec$study$diverse_cohorts,
     metadata_synid = syn_ids[["Diverse_Cohorts"]]
   )
 )
@@ -305,7 +309,7 @@ df_list <- apply(manifest, 1, function(m_row) {
       apoeGenotype = as.character(apoeGenotype),
       amyAny = as.character(amyAny),
       GENESIS_study = m_row[["GENESIS_study"]],
-      ADKP_study = m_row[["ADKP_study"]]
+      study = m_row[["study"]]
     )
   return(meta)
 }, simplify = FALSE)
