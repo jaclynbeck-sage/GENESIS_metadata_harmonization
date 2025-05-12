@@ -627,6 +627,8 @@ deduplicate_studies <- function(df_list,
           ind_id, col_name, "[", paste(unique_vals, collapse = ", "), "]\n"
         )
 
+        # The ageDeath/PMI validation function will print out the string if
+        # there's a mismatch. All other columns should print out here.
         if (verbose) {
           cat(report_string)
         }
@@ -708,15 +710,18 @@ deduplicate_ageDeath_pmi <- function(meta_tmp, leftover, col_name, report_string
   # mis-match. There may be more than 2 values so this is the quickest way to
   # check.
   num_vals <- suppressWarnings(as.numeric(leftover)) |>
-    na.omit() |>
-    round()
+    na.omit()
+
+  equivalent <- sapply(num_vals, all.equal, num_vals[1])
 
   # Report a real mismatch. `num_vals` should have one unique value if all
   # numbers are roughly equal, AND `num_vals` should be the same length as
   # `leftover`. If it's not, that means not all values in `leftover` are numeric
   # (i.e. one may be 90+). We report it but don't try and resolve the
-  # duplication.
-  if (length(unique(num_vals)) > 1 || length(num_vals) != length(leftover)) {
+  # duplication. Note that `all.equal` returns a string with the difference
+  # between two numbers if they are not equal, rather than FALSE, so we have to
+  # check for != TRUE instead of == FALSE.
+  if (any(equivalent != TRUE)) {
     cat(report_string)
   }
 
