@@ -31,7 +31,8 @@ syn_ids <- list(
   "Diverse_Cohorts" = "syn51757646.20",
   "MayoRNAseq" = "syn23277389.7",
   "MSBB" = "syn6101474.9",
-  "ROSMAP" = "syn3191087.11"
+  "ROSMAP" = "syn3191087.11",
+  "MSBB_corrections" = "syn66511661.1"
 )
 
 synLogin()
@@ -88,6 +89,81 @@ print_qc(meta_new)
 validate_values(meta_new, spec)
 
 df_list[["MSBB"]] <- meta_new
+
+
+# Corrected MSBB samples -------------------------------------------------------
+
+meta_file <- synapse_download(syn_ids[["MSBB_corrections"]])
+meta <- readxl::read_xlsx(meta_file$path) |>
+  as.data.frame()
+
+colnames(meta)
+
+print_qc(meta,
+         ageDeath_col = "Age",
+         race_col = "RaceLabel",
+         sex_col = "SexLabel",
+         pmi_col = "PMI (min)",
+         apoe_col = "ApoE",
+         cerad_col = "CERAD_1",
+         braak_col = "B&B Alz"
+)
+
+meta_new <- meta |>
+  rename(
+    individualID = SubNum,
+    ageDeath = Age,
+    race = RaceLabel,
+    sex = SexLabel,
+    PMI = `PMI (min)`,
+    amyCerad = CERAD_1,
+    apoeGenotype = ApoE,
+    Braak = `B&B Alz`
+  ) |>
+  mutate(
+    ageDeath = censor_ages(ageDeath, spec),
+    PMI = PMI / 60, # PMI is in minutes
+    sex = tolower(sex),
+    isHispanic = case_match(race,
+                            NA ~ spec$missing,
+                            c("Asian", "Black", "White", "Other") ~ spec$isHispanic$hisp_false,
+                            "Hispanic" ~ spec$isHispanic$hisp_true,
+                            .default = spec$missing
+    ),
+    race = case_match(race,
+                      NA ~ spec$missing,
+                      "Asian" ~ spec$race$Asian,
+                      "Black" ~ spec$race$Black,
+                      "Hispanic" ~ spec$race$other,
+                      "White" ~ spec$race$White,
+                      "Other" ~ spec$race$other,
+                      .default = race
+    ),
+    apoeGenotype = str_replace(apoeGenotype, "/", ""),
+    apoe4Status = get_apoe4Status(apoeGenotype, spec),
+    amyCerad = case_match(amyCerad,
+                          NA ~ spec$missing,
+                          0 ~ spec$amyCerad$none,
+                          1 ~ spec$amyCerad$sparse,
+                          2 ~ spec$amyCerad$moderate,
+                          3 ~ spec$amyCerad$frequent,
+                          .default = as.character(amyCerad)
+    ),
+    amyAny = get_amyAny(amyCerad, spec),
+    amyThal = spec$missing,
+    amyA = get_amyA(amyThal, spec),
+    Braak = to_Braak_stage(Braak, spec),
+    bScore = get_bScore(Braak, spec),
+    cohort = spec$cohort$msbb,
+    study = spec$study$msbb,
+    dataContributionGroup = spec$dataContributionGroup$mssm
+  )
+
+print_qc(meta_new)
+
+validate_values(meta_new, spec)
+
+df_list[["MSBB_corrections"]] <- meta_new
 
 
 # ROSMAP -----------------------------------------------------------------------
