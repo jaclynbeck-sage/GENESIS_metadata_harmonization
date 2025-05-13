@@ -53,10 +53,14 @@ meta_nps <- merge(dplyr::select(meta_nps, -CERAD, -Braak),
 
 # Must be done before re-naming MSBB 1.0 IDs or removing columns
 has_1.0 <- subset(meta_dc, individualID_AMPAD_1.0 %in% meta_msbb$individualID)
-matches_msbb <- subset(meta_dc, individualID %in%
-                         str_replace(meta_msbb$individualID, "AMPAD_MSSM_[0]+", ""))
+matches_msbb <- subset(meta_dc, str_replace(individualID, "_MSSM", "") %in%
+                         str_replace(meta_msbb$individualID, "AMPAD_MSSM_[0]+", "") &
+                         dataContributionGroup == "MSSM")
 
 missing_1.0_id <- setdiff(matches_msbb$individualID, has_1.0$individualID)
+missing_1.0_values <- sapply(missing_1.0_id, function(m_id) {
+  grep(m_id, meta_msbb$individualID, value = TRUE)
+})
 
 
 # Fix some columns to match the other data sets -----------------------------
@@ -151,9 +155,11 @@ meta_corrections <- meta_corrections |>
   mutate(across(any_of(cols_include), as.character))
 
 meta_dc <- meta_dc |>
+  subset(dataContributionGroup == "MSSM") |>
   dplyr::rename(CERAD = amyCerad) |>
   # PMI is in hours, while every other data set is in minutes
-  mutate(PMI = suppressWarnings(as.numeric(PMI)) * 60) |>
+  mutate(individualID = str_replace(individualID, "_MSSM", ""),
+         PMI = suppressWarnings(as.numeric(PMI)) * 60) |>
   select(any_of(cols_include)) |>
   mutate(across(any_of(cols_include), as.character))
 
@@ -185,8 +191,9 @@ all_ids <- c(meta_msbb$individualID, meta_corrections$individualID,
              meta_dc$individualID, meta_nps$individualID) |>
   table()
 
-# Any samples that appear in at least 2 data sets
+# Any samples that appear in at least 2 data sets, removing ROSMAP samples
 overlaps <- names(all_ids)[which(all_ids >= 2)]
+overlaps <- overlaps[!grepl("^R[0-9]+", overlaps)]
 
 meta_msbb <- subset(meta_msbb, individualID %in% overlaps)
 meta_corrections <- subset(meta_corrections, individualID %in% overlaps) # This should be all samples
@@ -220,20 +227,11 @@ dupes <- all_data |>
 
 # helper function
 mismatch_to_df <- function(col_name, mm_type, meta_tmp) {
-  #if (mm_type == "missing") {
-  #  who <- meta_tmp$source[which(is.na(meta_tmp[, col_name]) |
-  #                                 meta_tmp[, col_name] %in% "missing or unknown")]
-  #  val <- meta_tmp[meta_tmp$source %in% who, col_name]
-  #} else {
-    who <- meta_tmp$source
-    val <- meta_tmp[, col_name]
-  #}
-
   data.frame(individualID = unique(meta_tmp$individualID),
              column = col_name,
              type = mm_type,
-             source = who,
-             value = val)
+             source = meta_tmp$source,
+             value = meta_tmp[, col_name])
 }
 
 val_is_missing <- function(vals) {
@@ -248,7 +246,11 @@ mismatches <- lapply(dupes, function(dupe_id) {
 
   for (col_name in setdiff(cols_include, c("individualID", "source", "CERAD_original", "Braak_original"))) {
     if (col_name == "CDR") {
+      # Only MSBB 1.0 and NPS-AD have a CDR column
       vals <- unique(meta_tmp[meta_tmp$source %in% c("MSBB 1.0", "NPS-AD"), col_name])
+    } else if (col_name %in% c("race", "isHispanic")) {
+      # Ignore potential mismatches with NPS-AD race/ethnicity, which is not self-report
+      vals <- unique(meta_tmp[meta_tmp$source != "NPS-AD", col_name])
     } else {
       vals <- unique(meta_tmp[, col_name])
     }
@@ -291,38 +293,44 @@ mismatches <- lapply(dupes, function(dupe_id) {
 
 mismatches <- do.call(rbind, mismatches)
 
-missing <- subset(mismatches, type == "missing") |>
+mismatches <- mismatches |>
   tidyr::pivot_wider(names_from = "source", values_from = "value")
 
-table(missing$column)
-
-conflict <- subset(mismatches, type == "conflict") |>
-  tidyr::pivot_wider(names_from = "source", values_from = "value")
-
-table(conflict$column)
+table(mismatches$column, mismatches$type)
 
 
 # Make a spreadsheet of missing values and conflicts
 
-resolve_conflicts <- function(df, conflict_type) {
+resolve_conflicts <- function(df) {
   df$dataset <- ""
+  df$previous_value <- ""
   df$corrected_value <- ""
   df$correction_source <- ""
 
   for (ri in 1:nrow(df)) {
     row <- df[ri, ]
     vals <- unlist(row[1, c("MSBB 1.0", "NPS-AD", "Diverse Cohorts", "MSBB Corrections")])
+
+    # ignore NPS-AD race values
+    if (row$column %in% c("race", "isHispanic")) {
+      vals <- vals[-2]
+    }
     c_source <- names(vals)[which(!val_is_missing(vals))]
 
-    if (conflict_type == "missing") {
+    if (row$type == "missing") {
       who <- names(vals)[which(vals %in% "missing or unknown")]
     } else {
       who <- c_source
     }
 
     if (length(unique(vals[c_source])) > 1) {
+      # race and isHispanic only -- ignore NPS-AD values which are not self-reported
+      if (row$column %in% c("race", "isHispanic") & "NPS-AD" %in% c_source) {
+        c_source <- setdiff(c_source, "NPS-AD")
+      }
+
       # Start dropping sources in order of lowest to highest priority
-      if ("MSBB 1.0" %in% c_source) {
+      if (length(unique(vals[c_source])) > 1 & "MSBB 1.0" %in% c_source) {
         c_source <- setdiff(c_source, "MSBB 1.0")
       }
 
@@ -332,28 +340,53 @@ resolve_conflicts <- function(df, conflict_type) {
 
       # We assume NPS-AD and MSBB Corrections should both be correct. If not, we
       # have an unresolvable conflict that requires manual intervention.
+      # Note from Laura: Assume MSBB Corrections is ground truth in case of
+      # conflict with NPS-AD. Not implemented yet.
       if (length(unique(vals[c_source])) > 1) {
         print(paste0("Unresolvable conflict for ", row$column, ": ", row$individualID))
         print(vals[unique(c(who, c_source))])
         cat("\n")
 
         tmp_vals <- vals[c_source]
-        c_source <- paste(c_source, collapse = ", ")
+        c_source <- paste(c_source, collapse = "; ")
         vals[c_source] <- paste0("Unresolved conflict: ", paste(tmp_vals, collapse = " vs "))
       }
     }
 
     who <- setdiff(who, c_source)
 
-    df$dataset[ri] <- paste(who, collapse = ", ")
+    df$dataset[ri] <- paste(who, collapse = "; ")
+    df$previous_value[ri] <- paste(unique(vals[who]), collapse = "; ")
     df$corrected_value[ri] <- unique(vals[c_source])
-    df$correction_source[ri] <- paste(c_source, collapse = ", ")
+    df$correction_source[ri] <- paste(c_source, collapse = "; ")
   }
 
   df |>
-    select(individualID, column, type, dataset, corrected_value, correction_source) |>
+    select(individualID, column, type, dataset, previous_value,
+           corrected_value, correction_source) |>
     as.data.frame()
 }
 
-missing <- resolve_conflicts(missing, "missing")
-conflict <- resolve_conflicts(conflict, "conflict")
+results <- resolve_conflicts(mismatches) |>
+  arrange(column, type, individualID)
+
+dc_missing_1.0_id <- data.frame(
+  individualID = missing_1.0_id,
+  column = "individualID_AMPAD_1.0",
+  type = "missing",
+  dataset = "Diverse Cohorts",
+  previous_value = "NA",
+  corrected_value = missing_1.0_values,
+  correction_source = "MSBB 1.0"
+)
+
+results <- rbind(results, dc_missing_1.0_id)
+
+res_stats <- results |>
+  group_by(column, type) |>
+  count() |>
+  tidyr::pivot_wider(names_from = type, values_from = n, values_fill = 0) |>
+  as.data.frame()
+
+write.csv(results, "msbb_mismatch_summary.csv", row.names = FALSE, quote = FALSE)
+write.csv(res_stats, "msbb_mismatch_stats.csv", row.names = FALSE, quote = FALSE)
