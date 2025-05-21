@@ -1,11 +1,19 @@
 # This script harmonizes and de-duplicates AMP-AD 1.0 metadata (MayoRNAseq,
-# MSBB, and ROSMAP) and Diverse Cohorts metadata, filling in missing information
-# where there is sample overlap between the four files. The de-duplicated data
-# is then used as the standard to check quality of other overlapping GENESIS
-# studies and fill in missing information in those studies as well.
+# MSBB, and ROSMAP) with Diverse Cohorts and NPS-AD metadata, filling in missing
+# information where there is sample overlap between the five files. The
+# de-duplicated data is then used as the standard to check quality of other
+# overlapping GENESIS studies and fill in missing information in those studies
+# as well.
 #
-# The harmonized ROSMAP 1.0 and Diverse Cohorts metadata files are also used
-# directly by multiple GENESIS studies (GEN-A2, GEN-A8, GEN-A13, GEN-B6,
+# Note: There are multiple metadata errors in the MSBB 1.0 data, which have
+# been corrected either in NPS-AD data, Diverse Cohorts data, or an additional
+# file of corrections. The correct data is propagated to all data using these
+# samples (MSBB 1.0, Diverse Cohorts, and NPS-AD), which is why this script
+# includes the NPS-AD data instead of putting it in the GENESIS harmonization
+# script.
+#
+# The harmonized ROSMAP 1.0, Diverse Cohorts, and NPS-AD metadata files are also
+# used directly by multiple GENESIS studies (GEN-A2, GEN-A8, GEN-A13, GEN-B6,
 # GEN-B4), so they are uploaded to Synapse for GENESIS use.
 #
 # The MayoRNAseq 1.0 and MSBB 1.0 data sets are not used directly by any study
@@ -25,13 +33,16 @@ spec <- config::get(file = "GENESIS_harmonization.yml")
 source("util_functions.R")
 source("dataset_specific_functions.R")
 
-UPLOAD_SYNID <- "syn65931571"
+UPLOAD_SYNID <- "syn64759869" #"syn65931571"
 
 syn_ids <- list(
   "Diverse_Cohorts" = "syn51757646.20",
   "MayoRNAseq" = "syn23277389.7",
   "MSBB" = "syn6101474.9",
   "ROSMAP" = "syn3191087.11",
+  "NPS-AD" = "syn55251012.4",
+  "NPS-AD_neuropath" = "syn55251003.1",
+  # Access restricted to Sage internal
   "MSBB_corrections" = "syn66511661.1"
 )
 
@@ -69,7 +80,7 @@ df_list[["MayoRNAseq"]] <- meta_new
 
 # MSBB -------------------------------------------------------------------------
 
-# GEN-A1 has > 300 samples from the original MSBB metadata
+# NPS-AD has > 300 samples from the original MSBB metadata
 
 meta_file <- synapse_download(syn_ids[["MSBB"]])
 meta <- read.csv(meta_file$path)
@@ -109,55 +120,7 @@ print_qc(meta,
          braak_col = "B&B Alz"
 )
 
-meta_new <- meta |>
-  rename(
-    individualID = SubNum,
-    ageDeath = Age,
-    race = RaceLabel,
-    sex = SexLabel,
-    PMI = `PMI (min)`,
-    amyCerad = CERAD_1,
-    apoeGenotype = ApoE,
-    Braak = `B&B Alz`
-  ) |>
-  mutate(
-    ageDeath = censor_ages(ageDeath, spec),
-    PMI = PMI / 60, # PMI is in minutes
-    sex = tolower(sex),
-    isHispanic = case_match(race,
-                            NA ~ spec$missing,
-                            c("Asian", "Black", "White", "Other") ~ spec$isHispanic$hisp_false,
-                            "Hispanic" ~ spec$isHispanic$hisp_true,
-                            .default = spec$missing
-    ),
-    race = case_match(race,
-                      NA ~ spec$missing,
-                      "Asian" ~ spec$race$Asian,
-                      "Black" ~ spec$race$Black,
-                      "Hispanic" ~ spec$race$other,
-                      "White" ~ spec$race$White,
-                      "Other" ~ spec$race$other,
-                      .default = race
-    ),
-    apoeGenotype = str_replace(apoeGenotype, "/", ""),
-    apoe4Status = get_apoe4Status(apoeGenotype, spec),
-    amyCerad = case_match(amyCerad,
-                          NA ~ spec$missing,
-                          0 ~ spec$amyCerad$none,
-                          1 ~ spec$amyCerad$sparse,
-                          2 ~ spec$amyCerad$moderate,
-                          3 ~ spec$amyCerad$frequent,
-                          .default = as.character(amyCerad)
-    ),
-    amyAny = get_amyAny(amyCerad, spec),
-    amyThal = spec$missing,
-    amyA = get_amyA(amyThal, spec),
-    Braak = to_Braak_stage(Braak, spec),
-    bScore = get_bScore(Braak, spec),
-    cohort = spec$cohort$msbb,
-    study = spec$study$msbb,
-    dataContributionGroup = spec$dataContributionGroup$mssm
-  )
+meta_new <- harmonize_MSBB_corrections(meta, spec)
 
 print_qc(meta_new)
 
@@ -221,9 +184,38 @@ validate_values(meta_new, spec)
 df_list[["Diverse_Cohorts"]] <- meta_new
 
 
+# NPS-AD -----------------------------------------------------------------------
+# This dataset has overlap with MSBB, ROSMAP, and Diverse Cohorts. Some values
+# from MSBB 1.0 have been corrected in this data, and some have not.
+# Special case: There is an additional file with neuropathology data that should
+# be pulled into the individual metadata.
+
+meta_file <- synapse_download(syn_ids[["NPS-AD"]])
+meta <- read.csv(meta_file$path)
+
+neuro_file <- synapse_download(syn_ids[["NPS-AD_neuropath"]])
+neuropath <- read.csv(neuro_file$path) |>
+  dplyr::rename(individualID = IndividualID)
+
+colnames(meta)
+
+print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
+print_qc(neuropath, cerad_col = "CERAD", braak_col = "BRAAK_AD")
+
+meta_new <- harmonize_NPS_AD(meta, neuropath, spec) |>
+  mutate(filename = meta_file$name)
+
+print_qc(meta_new)
+validate_values(meta_new, spec) # Cohort will fail until after harmonization
+
+df_list[["NPS-AD"]] <- meta_new
+
+
 # Merge all files into one data frame ------------------------------------------
 
 meta_all <- deduplicate_studies(df_list, spec, verbose = FALSE)
+
+meta_all <- subset(meta_all, study != "MSBB_corrections")
 
 print_qc(meta_all)
 validate_values(meta_all, spec)
@@ -236,6 +228,8 @@ saveRDS(meta_all, file.path("data", "tmp", "AMP1.0_DiverseCohorts_harmonized.rds
 
 # Use de-duplicated data but subset to only columns that exist in each
 # individual metadata file
+df_list[["MSBB_corrections"]] <- NULL # Not needed at this point
+
 new_files <- sapply(df_list, function(meta_old) {
   meta_new <- subset(meta_all, filename == unique(meta_old$filename)) |>
     select(all_of(colnames(meta_old))) |>
@@ -254,7 +248,7 @@ new_files <- sapply(df_list, function(meta_old) {
 # Upload to GENESIS metadata space
 
 # Note: Do not upload Mayo or MSBB
-new_files <- new_files[!grepl("Mayo|MSBB", new_files)]
+#new_files <- new_files[!grepl("Mayo|MSBB", new_files)]
 
 for (filename in new_files) {
   synapse_upload(filename, UPLOAD_SYNID)

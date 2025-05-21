@@ -187,10 +187,6 @@ harmonize_MayoRNAseq <- function(metadata, spec) {
 #   spec - a `config` object describing the standardized values for each field,
 #     as defined by this project's `GENESIS_harmonization.yml` file
 #
-# NOTE: There is one individual with incorrect `race` and `isHispanic` values
-# and two individuals with incorrect `Braak` values. These values are corrected
-# manually here based on Diverse Cohorts data.
-#
 # Returns:
 #   a `data.frame` with all relevant fields harmonized to the GENESIS data
 #   dictionary. Columns not defined in the data dictionary are left as-is.
@@ -221,16 +217,6 @@ harmonize_MSBB <- function(metadata, spec) {
         "U" ~ spec$missing,
         .default = race
       ),
-      ## Manual corrections
-      race = case_when(
-        individualID == "AMPAD_MSSM_0000036634" ~ spec$race$other,
-        .default = race
-      ),
-      isHispanic = case_when(
-        individualID == "AMPAD_MSSM_0000036634" ~ spec$isHispanic$hisp_true,
-        .default = isHispanic
-      ),
-      ##
       apoeGenotype = case_match(apoeGenotype,
         NA ~ spec$missing,
         .default = as.character(apoeGenotype)
@@ -248,16 +234,72 @@ harmonize_MSBB <- function(metadata, spec) {
       amyThal = spec$missing,
       amyA = get_amyA(amyThal, spec),
       Braak = to_Braak_stage(floor(Braak), spec),
-      ## Manual corrections
-      Braak = case_when(
-        individualID == "AMPAD_MSSM_0000013078" ~ to_Braak_stage(4, spec),
-        individualID == "AMPAD_MSSM_0000048247" ~ to_Braak_stage(6, spec),
-        .default = Braak
-      ),
-      ##
       bScore = get_bScore(Braak, spec),
       cohort = spec$cohort$msbb,
       study = spec$study$msbb
+    )
+}
+
+
+# Note: individual "6160" is "White" in NPS-AD, MSBB 1.0, and Diverse cohorts,
+# but "other" in MSBB corrections. Because of the consensus of the older data
+# with NPS-AD, in this case we ignore the corrected MSBB data and leave the race
+# as "White".
+harmonize_MSBB_corrections <- function(metadata, spec) {
+  metadata |>
+    rename(
+      individualID = SubNum,
+      ageDeath = Age,
+      race = RaceLabel,
+      sex = SexLabel,
+      PMI = `PMI (min)`,
+      amyCerad = CERAD_1,
+      apoeGenotype = ApoE,
+      Braak = `B&B Alz`
+    ) |>
+    mutate(
+      ageDeath = censor_ages(ageDeath, spec),
+      PMI = PMI / 60, # PMI is in minutes
+      sex = tolower(sex),
+      isHispanic = case_match(race,
+        NA ~ spec$missing,
+        c("Asian", "Black", "White", "Other") ~ spec$isHispanic$hisp_false,
+        "Hispanic" ~ spec$isHispanic$hisp_true,
+        .default = race
+      ),
+      race = case_match(race,
+        NA ~ spec$missing,
+        "Asian" ~ spec$race$Asian,
+        "Black" ~ spec$race$Black,
+        "Hispanic" ~ spec$race$other,
+        "White" ~ spec$race$White,
+        "Other" ~ spec$race$other,
+        .default = race
+      ),
+      ## Manual change as noted above
+      race = case_when(
+        individualID == "6160" ~ "White",
+        .default = race
+      ),
+      ##
+      apoeGenotype = str_replace(apoeGenotype, "/", ""),
+      apoe4Status = get_apoe4Status(apoeGenotype, spec),
+      amyCerad = case_match(amyCerad,
+        NA ~ spec$missing,
+        0 ~ spec$amyCerad$none,
+        1 ~ spec$amyCerad$sparse,
+        2 ~ spec$amyCerad$moderate,
+        3 ~ spec$amyCerad$frequent,
+        .default = as.character(amyCerad)
+      ),
+      amyAny = get_amyAny(amyCerad, spec),
+      amyThal = spec$missing,
+      amyA = get_amyA(amyThal, spec),
+      Braak = to_Braak_stage(Braak, spec),
+      bScore = get_bScore(Braak, spec),
+      cohort = spec$cohort$msbb,
+      study = "MSBB_corrections",
+      dataContributionGroup = spec$dataContributionGroup$mssm
     )
 }
 
@@ -492,17 +534,14 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
 # Note: Cerad mapping is defined in the NPS-AD data dictionary (syn57373364).
 #
 # Note: Ages are listed as "89+" in v4 of NPS-AD. All of these values should be
-# replaced with "90+" or "89", which can mostly be filled in from Diverse
-# Cohorts / AMP-AD 1.0 data. There are several individuals listed as "89+" with
-# known discrepancies to the DC / 1.0 data, which are manually corrected here.
-# The age column will be fixed in a future version of the NPS-AD metadata.
+# replaced with "90+" or "89", which can be filled in from Diverse Cohorts,
+# AMP-AD 1.0 data, or the MSBB corrections data. The age column will be fixed in
+# a future version of the NPS-AD metadata.
 #
-# Note: Even after de-duplication, most harmonized columns (ageDeath, PMI, sex,
-# race, isHispanic, apoeGenotype, amyCerad, Braak) that have values that
-# disagree with AMP-AD 1.0 and Diverse Cohorts data. NPS-AD determined these
-# values algorithmically or by re-processing data, or assumes these are
-# corrections to original metadata, and wishes these values to remain as-is, so
-# we do not alter them.
+# Note: Even after de-duplication, the "race" and "isHispanic" columns will have
+# values that disagree with AMP-AD 1.0 and Diverse Cohorts data. NPS-AD
+# determined these values algorithmically or by re-processing data and wishes
+# these values to remain as-is, so we do not alter them.
 #
 # Modifications needed for version 4:
 #   * Merge neuropathology data with individual metadata
@@ -523,8 +562,6 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
 #   * Fix `cohort` values to match data dictionary
 #   * Add the `dataContributionGroup` column with values appropriate to each
 #     cohort.
-#   * Use Diverse Cohorts and AMP-AD 1.0 data to get the correct `cohort` value
-#     for samples marked as "ROSMAP"
 #   * Add `study` = "NPS-AD"
 #
 # Arguments:
@@ -533,8 +570,6 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
 #   neuropath - a `data.frame` of neuropathology data for each individual, which
 #     can be matched to `metadata` by `individualID`. Columns are variables and
 #     rows are individuals.
-#   harmonized_baseline - a `data.frame` of de-duplicated and harmonized
-#     metadata from all AMP-AD 1.0 studies and Diverse Cohorts
 #   spec - a `config` object describing the standardized values for each field,
 #     as defined by this project's `GENESIS_harmonization.yml` file
 #
@@ -542,14 +577,14 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
 #   a `data.frame` with all relevant fields harmonized to the GENESIS data
 #   dictionary. Columns not defined in the data dictionary are left as-is.
 #
-harmonize_NPS_AD <- function(metadata, neuropath, harmonized_baseline, spec) {
+harmonize_NPS_AD <- function(metadata, neuropath, spec) {
   metadata <- metadata |>
     # Braak is all NA in the individual metadata file but has values in the
     # neuropath file
     select(-Braak) |>
     merge(neuropath)
 
-  meta_new <- metadata |>
+  metadata |>
     select(-Component) |>
     rename(
       isHispanic = ethnicity,
@@ -569,14 +604,6 @@ harmonize_NPS_AD <- function(metadata, neuropath, harmonized_baseline, spec) {
         # Cohorts / AMP-AD 1.0 data during de-duplication
         "89+" ~ NA,
         .default = ageDeath),
-      ageDeath = case_match(individualID,
-        # Exceptions to the above: These three individuals have a different age
-        # in NPS-AD than Diverse Cohorts / 1.0 data that should not be over-
-        # written
-        c("AMPAD_MSSM_0000011938", "AMPAD_MSSM_0000056009") ~ spec$over90,
-        "AMPAD_MSSM_0000077061" ~ "89",
-        .default = ageDeath
-      ),
       ##
       PMI = PMI / 60,
       pmiUnits = "hours",
@@ -622,24 +649,6 @@ harmonize_NPS_AD <- function(metadata, neuropath, harmonized_baseline, spec) {
       ),
       study = spec$study$nps_ad
     )
-
-  # Pull missing information from AMP-AD 1.0 and Diverse Cohorts metadata,
-  # including correct cohort information
-  meta_new <- meta_new |>
-    mutate(source = "GEN-A1")
-
-  meta_new <- deduplicate_studies(
-    list(meta_new, harmonized_baseline),
-    spec,
-    # NPS-AD did their own re-processing of these values, which should not be
-    # over-written by any other data set.
-    exclude_cols = c("amyCerad", "amyAny", "Braak", "bScore", "study"),
-    verbose = FALSE
-  ) |>
-    subset(source == "GEN-A1") |>
-    select(all_of(colnames(meta_new)), -source)
-
-  return(meta_new)
 }
 
 

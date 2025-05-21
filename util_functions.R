@@ -539,6 +539,10 @@ check_new_versions <- function(syn_id_list) {
 #          AMP-AD 1.0,
 #       b) Ignore cases where the disagreement is "Mayo Clinic" vs "Banner",
 #       c) Otherwise, report the difference but don't change any values
+#   5. For cases where "MSBB_corrections" disagrees with another source,
+#      the value from "MSBB_corrections" is always used except for the
+#      "apoeGenotype" and "apoe4Status" columns, where the "NPS-AD" value is
+#      used instead if it is available.
 #
 # When duplicated data is un-resolvable, either because it is a special case
 # that is intentionally flagged or because this function doesn't have anything
@@ -590,14 +594,24 @@ deduplicate_studies <- function(df_list,
           individualID == 29582 & dataContributionGroup == "MSSM" ~ "29582_MSSM",
           .default = as.character(individualID)
         ),
+        # Special case: Some samples contributed by "Emory" are from "Mt Sinai
+        # Brain Bank" and they need to be included with MSSM samples during
+        # de-duplication
+        original_dataContributionGroup = dataContributionGroup,
+        dataContributionGroup = case_when(
+          dataContributionGroup == spec$dataContributionGroup$emory &
+            cohort == spec$cohort$msbb ~ spec$dataContributionGroup$mssm,
+          .default = dataContributionGroup
+        )
       )
   })
 
   meta_all <- purrr::list_rbind(df_list)
   include_cols <- setdiff(include_cols, exclude_cols)
 
-  # This accounts for overlapping IDs between different studies that don't refer
-  # to the same individual
+  # Find IDs that have multiple/duplicate rows. Adding dataContributionGroup
+  # accounts for overlapping IDs between different studies that don't refer to
+  # the same individual
   dupe_ids <- meta_all |>
     select(all_of(include_cols)) |>
     distinct() |>
@@ -651,7 +665,21 @@ deduplicate_studies <- function(df_list,
         } else {
           # More than 1 value left after omission of NA and "missing or unknown".
           # Do some column-specific handling of duplicates
-          if (col_name %in% c("ageDeath", "PMI")) {
+          if (col_name %in% c("apoeGenotype", "apoe4Status") &&
+              "NPS-AD" %in% meta_tmp$study &&
+              meta_tmp[meta_tmp$study == "NPS-AD", col_name] != spec$missing) {
+            # Use the NPS-AD value for apoe genotype / status where it disagrees
+            # with other data sets
+            meta_tmp[, col_name] <- meta_tmp[meta_tmp$study == "NPS-AD", col_name]
+          } else if ("MSBB_corrections" %in% meta_tmp$study) {
+            if (col_name %in% c("race", "isHispanic")) {
+              # Do not correct NPS-AD race or isHispanic values
+              meta_tmp[meta_tmp$study != "NPS-AD", col_name] <-
+                meta_tmp[meta_tmp$study == "MSBB_corrections", col_name]
+            } else {
+              meta_tmp[, col_name] <- meta_tmp[meta_tmp$study == "MSBB_corrections", col_name]
+            }
+          } else if (col_name %in% c("ageDeath", "PMI")) {
             meta_tmp <- deduplicate_ageDeath_pmi(meta_tmp, leftover, col_name, report_string)
           } else if (col_name == "cohort") {
             meta_tmp <- deduplicate_cohort(meta_tmp, leftover, col_name, spec, report_string)
@@ -670,10 +698,11 @@ deduplicate_studies <- function(df_list,
     meta_all[rows_replace, ] <- meta_tmp
   }
 
-  # Revert back to original individualIDs
+  # Revert back to original individualIDs and dataContributionGroups
   meta_all <- meta_all |>
-    mutate(individualID = original_individualID) |>
-    select(-original_individualID)
+    mutate(individualID = original_individualID,
+           dataContributionGroup = original_dataContributionGroup) |>
+    select(-original_individualID, -original_dataContributionGroup)
 
   return(meta_all)
 }
@@ -712,20 +741,38 @@ deduplicate_ageDeath_pmi <- function(meta_tmp, leftover, col_name, report_string
   num_vals <- suppressWarnings(as.numeric(leftover)) |>
     na.omit()
 
-  equivalent <- sapply(num_vals, all.equal, num_vals[1])
+  equivalent <- sapply(num_vals, all.equal, num_vals[1], tolerance = 1e-3)
 
-  # Report a real mismatch. `num_vals` should have one unique value if all
-  # numbers are roughly equal, AND `num_vals` should be the same length as
-  # `leftover`. If it's not, that means not all values in `leftover` are numeric
-  # (i.e. one may be 90+). We report it but don't try and resolve the
-  # duplication. Note that `all.equal` returns a string with the difference
-  # between two numbers if they are not equal, rather than FALSE, so we have to
-  # check for != TRUE instead of == FALSE.
+  # If there's a real mismatch, try using the NPS-AD value if it exists. If not,
+  # report the mismatch. `num_vals` should have one unique value if all numbers
+  # are roughly equal, AND `num_vals` should be the same length as `leftover`.
+  # If it's not, that means not all values in `leftover` are numeric (i.e. one
+  # may be 90+). We report it but don't try and resolve the duplication. Note
+  # that `all.equal` returns a string with the difference between two numbers if
+  # they are not equal, rather than FALSE, so we have to check for != TRUE
+  # instead of == FALSE.
   if (any(equivalent != TRUE)) {
-    cat(report_string)
+    if ("NPS-AD" %in% meta_tmp$study) {
+      meta_tmp[, col_name] <- meta_tmp[meta_tmp$study == "NPS-AD", col_name]
+    } else {
+      cat(report_string)
+    }
+  } else if (length(leftover) != ncol(meta_tmp)) {
+    # No real mismatch but at least one value was NA and there are multiple
+    # close-enough values. Use NPS-AD value first if it exists, then Diverse
+    # Cohorts if it exists. Otherwise print.
+    na_vals <- which(is.na(meta_tmp[, col_name]))
+
+    if ("NPS-AD" %in% meta_tmp$study) {
+      meta_tmp[na_vals, col_name] <- meta_tmp[meta_tmp$study == "NPS-AD", col_name]
+    } else if ("AMP-AD_DiverseCohorts" %in% meta_tmp$study) {
+      meta_tmp[na_vals, col_name] <- meta_tmp[meta_tmp$study == "AMP-AD_DiverseCohorts", col_name]
+    } else {
+      cat("Unresolved NA fill: ", report_string)
+    }
   }
 
-  # For now we leave the ages as-is even if there's difference in precision
+  # Otherwise we leave the ages as-is even if there's difference in precision
 
   return(meta_tmp)
 }

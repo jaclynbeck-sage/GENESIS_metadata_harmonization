@@ -55,7 +55,7 @@ meta_nps <- merge(dplyr::select(meta_nps, -CERAD, -Braak),
 has_1.0 <- subset(meta_dc, individualID_AMPAD_1.0 %in% meta_msbb$individualID)
 matches_msbb <- subset(meta_dc, str_replace(individualID, "_MSSM", "") %in%
                          str_replace(meta_msbb$individualID, "AMPAD_MSSM_[0]+", "") &
-                         dataContributionGroup == "MSSM")
+                         cohort == "Mt Sinai Brain Bank")
 
 missing_1.0_id <- setdiff(matches_msbb$individualID, has_1.0$individualID)
 missing_1.0_values <- sapply(missing_1.0_id, function(m_id) {
@@ -155,7 +155,7 @@ meta_corrections <- meta_corrections |>
   mutate(across(any_of(cols_include), as.character))
 
 meta_dc <- meta_dc |>
-  subset(dataContributionGroup == "MSSM") |>
+  subset(cohort == "Mt Sinai Brain Bank") |>
   dplyr::rename(CERAD = amyCerad) |>
   # PMI is in hours, while every other data set is in minutes
   mutate(individualID = str_replace(individualID, "_MSSM", ""),

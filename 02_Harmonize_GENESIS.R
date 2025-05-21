@@ -1,10 +1,9 @@
 # This script harmonizes and de-duplicates multiple studies used for GENESIS,
 # filling in missing information where there is sample overlap between a data
-# set and the Diverse Cohorts / AMP-AD 1.0 data. Harmonized metadata is uploaded
-# to Synapse for use.
+# set and the Diverse Cohorts / AMP-AD 1.0 / NPS-AD data. Harmonized metadata is
+# uploaded to Synapse for use.
 #
 # The following data sets are harmonized in this script:
-#   GEN-A1 / NPS-AD
 #   GEN-A2 / ROSMAP
 #   GEN-A4 / SEA-AD
 #   GEN-A8 / snRNAseqAD_Trem2
@@ -29,8 +28,7 @@ source("dataset_specific_functions.R")
 
 
 syn_ids <- list(
-  "GEN-A1" = "syn55251012.4", # NPS-AD
-  "GEN-A1_neuropath" = "syn55251003.1", # NPS-AD neuropathology
+  # TODO harmonized NPS-AD file?
   "ROSMAP" = "syn64759878.5", # Harmonized file, for GEN-A2, GEN-A8, GEN-A13, GEN-B6
   "SEA-AD" = "syn31149116.7", # SEA-AD, for GEN-A4 and GEN-B5
   "GEN-A9" = "syn22432749.1", # SMIB-AD
@@ -59,26 +57,7 @@ harmonized_baseline <- readRDS(file.path("data", "tmp", "AMP1.0_DiverseCohorts_h
 # Special case: There is an additional file with neuropathology data that should
 # be pulled into the individual metadata.
 
-meta_file <- synapse_download(syn_ids[["GEN-A1"]])
-meta <- read.csv(meta_file$path)
-
-neuro_file <- synapse_download(syn_ids[["GEN-A1_neuropath"]])
-neuropath <- read.csv(neuro_file$path) |>
-  dplyr::rename(individualID = IndividualID)
-
-colnames(meta)
-
-print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
-print_qc(neuropath, cerad_col = "CERAD", braak_col = "BRAAK_AD")
-
-meta_new <- harmonize_NPS_AD(meta, neuropath, harmonized_baseline, spec)
-
-print_qc(meta_new)
-validate_values(meta_new, spec)
-
-new_filename <- write_metadata(meta_new, meta_file$name)
-new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
-
+# TODO add harmonized file to manifest
 manifest <- rbind(
   manifest,
   data.frame(
