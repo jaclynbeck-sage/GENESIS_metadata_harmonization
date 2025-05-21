@@ -4,6 +4,7 @@
 # uploaded to Synapse for use.
 #
 # The following data sets are harmonized in this script:
+#   GEN-A2 / NPS-AD
 #   GEN-A2 / ROSMAP
 #   GEN-A4 / SEA-AD
 #   GEN-A8 / snRNAseqAD_Trem2
@@ -28,7 +29,7 @@ source("dataset_specific_functions.R")
 
 
 syn_ids <- list(
-  # TODO harmonized NPS-AD file?
+  "NPS-AD" = "syn65907234.2", # Harmonized file, for GEN-A1
   "ROSMAP" = "syn64759878.5", # Harmonized file, for GEN-A2, GEN-A8, GEN-A13, GEN-B6
   "SEA-AD" = "syn31149116.7", # SEA-AD, for GEN-A4 and GEN-B5
   "GEN-A9" = "syn22432749.1", # SMIB-AD
@@ -44,7 +45,7 @@ syn_ids <- list(
 synLogin()
 check_new_versions(syn_ids)
 
-UPLOAD_SYNID <- "syn65931571"
+UPLOAD_SYNID <- "syn64759869" #"syn65931571"
 
 manifest <- c()
 
@@ -53,17 +54,14 @@ harmonized_baseline <- readRDS(file.path("data", "tmp", "AMP1.0_DiverseCohorts_h
 
 
 # GEN-A1 -----------------------------------------------------------------------
-# Has sample overlap with MSBB, ROSMAP, and Diverse Cohorts.
-# Special case: There is an additional file with neuropathology data that should
-# be pulled into the individual metadata.
+# Uses NPS-AD data that was harmonized in Step 1.
 
-# TODO add harmonized file to manifest
 manifest <- rbind(
   manifest,
   data.frame(
     GENESIS_study = "GEN-A1",
     study = spec$study$nps_ad,
-    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
+    metadata_synid = syn_ids[["NPS-AD"]]
   )
 )
 
