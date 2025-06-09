@@ -838,3 +838,56 @@ deduplicate_cohort <- function(meta_tmp, leftover, col_name, spec, report_string
 
   return(meta_tmp)
 }
+
+
+# Fill missing AMP-AD 1.0 values in Diverse Cohorts
+#
+# The Diverse Cohorts metadata has an `individualID_AMPAD_1.0` column that is
+# supposed to have the corresponding AMP-AD 1.0 ID if that sample exists in 1.0
+# data. However this field has a lot of NAs for samples that do exist in 1.0
+# data, whether intentional or not. This function fills in the matching ID from
+# 1.0 data in these cases.
+#
+# Arguments:
+#   meta_all - a data.frame of all Diverse Cohorts, AMP-AD 1.0, and NPS-AD data
+#     as returned by `deduplicate_studies()`.
+#
+# Returns:
+#   meta_all but with appropriate `individualID_AMPAD_1.0` values filled in
+fill_missing_ampad1.0_ids <- function(meta_all) {
+  dc <- subset(meta_all, study == "AMP-AD_DiverseCohorts") |>
+    select(individualID, cohort, individualID_AMPAD_1.0, study)
+
+  ampad_1.0 <- subset(meta_all, study %in% c("MayoRNAseq", "MSBB", "ROSMAP")) |>
+    mutate(
+      original_individualID = individualID,
+      individualID = str_replace(individualID, "AMPAD_MSSM_[0]+", ""),
+      individualID = case_when(
+        individualID == 29637 & dataContributionGroup == "MSSM" ~ "29637_MSSM",
+        individualID == 29582 & dataContributionGroup == "MSSM" ~ "29582_MSSM",
+        .default = as.character(individualID)
+      )
+    ) |>
+    select(individualID, original_individualID, cohort)
+
+  matches_1.0 <- merge(dc, ampad_1.0)
+  stopifnot(length(unique(matches_1.0$individualID)) == nrow(matches_1.0))
+
+  cat(str_glue("Filling {sum(is.na(matches_1.0$individualID_AMPAD_1.0))} ",
+               "missing AMPAD-1.0 IDs in Diverse Cohorts\n"))
+
+  # This does nothing to the values that are already filled in, but replaces
+  # NAs with the 1.0 ID
+  matches_1.0$individualID_AMPAD_1.0 <- matches_1.0$original_individualID
+
+  matches_1.0 <- select(matches_1.0, -original_individualID)
+
+  col_order <- colnames(meta_all)
+
+  meta_all |>
+    # Replace column
+    select(-individualID_AMPAD_1.0) |>
+    merge(matches_1.0, all = TRUE, sort = FALSE) |>
+    # Restore original column order
+    select(all_of(col_order))
+}

@@ -9,7 +9,7 @@ syn_ids <- list(
   "NPS_AD" = "syn55251012.4",
   "NPS_AD_neuropath" = "syn55251003.1",
   # Access restricted to Sage internal
-  "MSBB_corrections" = "syn66511661.1"
+  "MSBB_corrections" = "syn66511661.2"
 )
 
 synLogin()
@@ -117,8 +117,7 @@ meta_msbb <- meta_msbb |>
   mutate(across(any_of(cols_include), as.character))
 
 meta_corrections <- meta_corrections |>
-  dplyr::rename(individualID = SubNum,
-                sex = SexLabel,
+  dplyr::rename(sex = SexLabel,
                 race = RaceLabel,
                 ageDeath = Age,
                 apoeGenotype = ApoE,
@@ -131,6 +130,7 @@ meta_corrections <- meta_corrections |>
     PMI = as.character(PMI),
     apoeGenotype = str_replace(apoeGenotype, "/", ""),
     sex = tolower(sex),
+    race = str_replace(race, " (nonHispanic)", ""),
     isHispanic = case_match(race,
                             "Hispanic" ~ "TRUE",
                             .default = "FALSE"),

@@ -248,7 +248,6 @@ harmonize_MSBB <- function(metadata, spec) {
 harmonize_MSBB_corrections <- function(metadata, spec) {
   metadata |>
     rename(
-      individualID = SubNum,
       ageDeath = Age,
       race = RaceLabel,
       sex = SexLabel,
@@ -261,6 +260,7 @@ harmonize_MSBB_corrections <- function(metadata, spec) {
       ageDeath = censor_ages(ageDeath, spec),
       PMI = PMI / 60, # PMI is in minutes
       sex = tolower(sex),
+      race = str_replace(race, " \\(nonHispanic\\)", ""),
       isHispanic = case_match(race,
         NA ~ spec$missing,
         c("Asian", "Black", "White", "Other") ~ spec$isHispanic$hisp_false,

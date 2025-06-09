@@ -29,14 +29,14 @@ source("dataset_specific_functions.R")
 
 
 syn_ids <- list(
-  "NPS-AD" = "syn65907234.2", # Harmonized file, for GEN-A1
-  "ROSMAP" = "syn64759878.5", # Harmonized file, for GEN-A2, GEN-A8, GEN-A13, GEN-B6
+  "NPS-AD" = "syn66639066.1", # Harmonized file, for GEN-A1
+  "ROSMAP" = "syn66639064.2", # Harmonized file, for GEN-A2, GEN-A8, GEN-A13, GEN-B6
   "SEA-AD" = "syn31149116.7", # SEA-AD, for GEN-A4 and GEN-B5
   "GEN-A9" = "syn22432749.1", # SMIB-AD
   "GEN-A10" = "syn25891193.1", # MCMPS
   "GEN-A11" = "syn31563038.1", # MC_snRNA
   "GEN-A12" = "syn51401700.2", # MC-BrAD
-  "Diverse_Cohorts" = "syn64759872.6" # Harmonized file, for GEN-B4
+  "Diverse_Cohorts" = "syn66639065.3" # Harmonized file, for GEN-B4
   # "GEN-B1" = "TBD",
   # "GEN-B2" = "TBD",
   # "GEN-B3" = "TBD"

@@ -43,7 +43,7 @@ syn_ids <- list(
   "NPS-AD" = "syn55251012.4",
   "NPS-AD_neuropath" = "syn55251003.1",
   # Access restricted to Sage internal
-  "MSBB_corrections" = "syn66511661.1"
+  "MSBB_corrections" = "syn66511661.2"
 )
 
 synLogin()
@@ -215,7 +215,8 @@ df_list[["NPS-AD"]] <- meta_new
 
 meta_all <- deduplicate_studies(df_list, spec, verbose = FALSE)
 
-meta_all <- subset(meta_all, study != "MSBB_corrections")
+meta_all <- subset(meta_all, study != "MSBB_corrections") |>
+  fill_missing_ampad1.0_ids() # For Diverse Cohorts
 
 print_qc(meta_all)
 validate_values(meta_all, spec)
@@ -241,6 +242,12 @@ new_files <- sapply(df_list, function(meta_old) {
     "_harmonized.csv",
     ".csv"
   )
+
+  # Sorting for this data set gets changed during fill_missing_ampad1.0_ids()
+  # so we sort it back
+  if (unique(meta_new$study) == "NPS-AD") {
+    meta_new <- arrange(meta_new, individualID)
+  }
 
   return(write_metadata(meta_new, new_file))
 })
