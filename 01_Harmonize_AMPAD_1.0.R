@@ -33,7 +33,7 @@ spec <- config::get(file = "GENESIS_harmonization.yml")
 source("util_functions.R")
 source("dataset_specific_functions.R")
 
-UPLOAD_SYNID <- "syn64759869" #"syn65931571"
+UPLOAD_SYNID <- "syn65931571"
 
 syn_ids <- list(
   "Diverse_Cohorts" = "syn51757646.20",
@@ -255,7 +255,7 @@ new_files <- sapply(df_list, function(meta_old) {
 # Upload to GENESIS metadata space
 
 # Note: Do not upload Mayo or MSBB
-#new_files <- new_files[!grepl("Mayo|MSBB", new_files)]
+new_files <- new_files[!grepl("Mayo|MSBB", new_files)]
 
 for (filename in new_files) {
   synapse_upload(filename, UPLOAD_SYNID)

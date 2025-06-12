@@ -591,6 +591,8 @@ harmonize_NPS_AD <- function(metadata, neuropath, spec) {
       amyCerad = CERAD,
       Braak = BRAAK_AD
     ) |>
+    # Move amyCerad from the second column to near the other pathology
+    dplyr::relocate(amyCerad, .before = Braak) |>
     mutate(
       # Fix to allow comparison to Diverse Cohorts
       diverseCohortsIndividualIDFormat = case_match(diverseCohortsIndividualIDFormat,

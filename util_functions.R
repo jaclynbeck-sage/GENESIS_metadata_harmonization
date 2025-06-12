@@ -433,9 +433,11 @@ write_metadata <- function(metadata, filename) {
 # Upload a file to Synapse
 #
 # This is a wrapper around `synStore` to shorten code slightly. It uploads a
-# file to Synapse but doesn't increment the file's version unless the contents
-# are different than what is currently on Synapse. It also doesn't erase any
-# annotations on the file in Synapse.
+# file to Synapse but only if the contents are different than what is currently
+# on Synapse. This check is done because if the file is the same, synStore will
+# erase any version comments in Synapse even if the file itself doesn't get a
+# new version number. This function also makes sure that synStore doesn't erase
+# any annotations on the file in Synapse.
 #
 # Arguments:
 #   filename - the full path and name of the file to upload
@@ -445,9 +447,33 @@ write_metadata <- function(metadata, filename) {
 # Returns:
 #   a Synapse `File` object containing information about the uploaded file
 synapse_upload <- function(filename, folder_id) {
+  syn_info <- synapse_get_info(filename, folder_id)
+
+  if (!is.null(syn_info)) {
+    md5 <- tools::md5sum(filename)
+
+    # Don't actually update the file.
+    if (md5 == syn_info$get("_file_handle")$contentMd5) {
+      message(str_glue("\"{basename(filename)}\" matches the file on Synapse ",
+                       "and will not be re-uploaded."))
+      return(syn_info)
+    }
+  }
+
   syn_file <- File(filename, parent = folder_id)
   syn_file <- synStore(syn_file, forceVersion = FALSE, set_annotations = FALSE)
   return(syn_file)
+}
+
+
+# Search a folder on Synapse to see if a file is already there. If it is,
+# return info on the file without downloading it. Otherwise, return NULL.
+synapse_get_info <- function(filename, folder_id) {
+  id <- synFindEntityId(basename(filename), folder_id)
+  if (is.null(id)) {
+    return(NULL)
+  }
+  synGet(id, downloadFile = FALSE)
 }
 
 

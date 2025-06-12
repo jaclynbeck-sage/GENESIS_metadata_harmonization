@@ -4,7 +4,7 @@
 # uploaded to Synapse for use.
 #
 # The following data sets are harmonized in this script:
-#   GEN-A2 / NPS-AD
+#   GEN-A1 / NPS-AD
 #   GEN-A2 / ROSMAP
 #   GEN-A4 / SEA-AD
 #   GEN-A8 / snRNAseqAD_Trem2
@@ -29,14 +29,14 @@ source("dataset_specific_functions.R")
 
 
 syn_ids <- list(
-  "NPS-AD" = "syn66639066.1", # Harmonized file, for GEN-A1
-  "ROSMAP" = "syn66639064.2", # Harmonized file, for GEN-A2, GEN-A8, GEN-A13, GEN-B6
+  "NPS-AD" = "syn65907234.4", # Harmonized file, for GEN-A1
+  "ROSMAP" = "syn64759878.6", # Harmonized file, for GEN-A2, GEN-A8, GEN-A13, GEN-B6
   "SEA-AD" = "syn31149116.7", # SEA-AD, for GEN-A4 and GEN-B5
   "GEN-A9" = "syn22432749.1", # SMIB-AD
   "GEN-A10" = "syn25891193.1", # MCMPS
   "GEN-A11" = "syn31563038.1", # MC_snRNA
   "GEN-A12" = "syn51401700.2", # MC-BrAD
-  "Diverse_Cohorts" = "syn66639065.3" # Harmonized file, for GEN-B4
+  "Diverse_Cohorts" = "syn64759872.7" # Harmonized file, for GEN-B4
   # "GEN-B1" = "TBD",
   # "GEN-B2" = "TBD",
   # "GEN-B3" = "TBD"
@@ -45,7 +45,7 @@ syn_ids <- list(
 synLogin()
 check_new_versions(syn_ids)
 
-UPLOAD_SYNID <- "syn64759869" #"syn65931571"
+UPLOAD_SYNID <- "syn65931571"
 
 manifest <- c()
 
