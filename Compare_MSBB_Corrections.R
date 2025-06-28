@@ -62,6 +62,13 @@ missing_1.0_values <- sapply(missing_1.0_id, function(m_id) {
   grep(m_id, meta_msbb$individualID, value = TRUE)
 })
 
+# Keep track of how many total MSBB samples are in Diverse Cohorts and AMP-AD
+# 1.0 before we subset to overlaps only
+n_dc_msbb <- sum(meta_dc$cohort == "Mt Sinai Brain Bank")
+n_dc_only <- n_dc_msbb - nrow(matches_msbb)
+n_1.0_msbb <- nrow(meta_msbb)
+n_nps_msbb <- sum(meta_nps$cohort == "MSBB")
+
 
 # Fix some columns to match the other data sets -----------------------------
 
@@ -82,7 +89,8 @@ to_Braak_stage <- function(num) {
 
 cols_include <- c("individualID", "sex", "race", "isHispanic",
                   "yearsEducation", "apoeGenotype", "ageDeath", "PMI",
-                  "CERAD", "CERAD_original", "Braak", "Braak_original", "CDR")
+                  "CERAD", "CERAD_original", "Braak", "Braak_original", "CDR",
+                  "ADoutcome")
 
 meta_msbb <- meta_msbb |>
   dplyr::rename(PMI = pmi,
@@ -130,7 +138,7 @@ meta_corrections <- meta_corrections |>
     PMI = as.character(PMI),
     apoeGenotype = str_replace(apoeGenotype, "/", ""),
     sex = tolower(sex),
-    race = str_replace(race, " (nonHispanic)", ""),
+    race = str_replace(race, " \\(nonHispanic\\)", ""),
     isHispanic = case_match(race,
                             "Hispanic" ~ "TRUE",
                             .default = "FALSE"),
@@ -195,10 +203,10 @@ all_ids <- c(meta_msbb$individualID, meta_corrections$individualID,
 overlaps <- names(all_ids)[which(all_ids >= 2)]
 overlaps <- overlaps[!grepl("^R[0-9]+", overlaps)]
 
-meta_msbb <- subset(meta_msbb, individualID %in% overlaps)
+meta_msbb <- subset(meta_msbb, individualID %in% overlaps) # This should be all samples
 meta_corrections <- subset(meta_corrections, individualID %in% overlaps) # This should be all samples
-meta_dc <- subset(meta_dc, individualID %in% overlaps)
-meta_nps <- subset(meta_nps, individualID %in% overlaps)
+meta_dc <- subset(meta_dc, individualID %in% overlaps) # This should be all MSBB samples
+meta_nps <- subset(meta_nps, individualID %in% overlaps) # ~ 1/3 of MSBB samples
 
 
 # Compare overlapping samples --------------------------------------------------
@@ -251,6 +259,9 @@ mismatches <- lapply(dupes, function(dupe_id) {
     } else if (col_name %in% c("race", "isHispanic")) {
       # Ignore potential mismatches with NPS-AD race/ethnicity, which is not self-report
       vals <- unique(meta_tmp[meta_tmp$source != "NPS-AD", col_name])
+    } else if (col_name == "ADoutcome") {
+      # Ignore ADoutcome, it is only for Diverse Cohorts and is handled further down
+      next
     } else {
       vals <- unique(meta_tmp[, col_name])
     }
@@ -298,6 +309,18 @@ mismatches <- mismatches |>
 
 table(mismatches$column, mismatches$type)
 
+# Ignore cases where NPS-AD derived values that differ from self-report AND the
+# other data sets have consensus
+mismatches_tmp <- subset(mismatches,
+                         type == "conflict" &
+                           column %in% c("apoeGenotype", "race", "isHispanic") &
+                           !is.na(`NPS-AD`)) |>
+  rowwise() |>
+  mutate(consensus = length(unique(na.omit(c(`MSBB 1.0`, `MSBB Corrections`, `Diverse Cohorts`))))) |>
+  subset(consensus > 1)
+
+mismatches_filt <- subset(mismatches, !(individualID %in% mismatches_tmp$individualID &
+                                          column %in% mismatches_tmp$column))
 
 # Make a spreadsheet of missing values and conflicts
 
@@ -367,8 +390,66 @@ resolve_conflicts <- function(df) {
     as.data.frame()
 }
 
-results <- resolve_conflicts(mismatches) |>
-  arrange(column, type, individualID)
+set.seed(101)
+obid <- sample(1:length(unique(mismatches_filt$individualID)),
+               length(unique(mismatches_filt$individualID)),
+               replace = FALSE)
+names(obid) <- unique(mismatches_filt$individualID)
+
+results <- resolve_conflicts(mismatches_filt)
+
+# See what effect Braak/Cerad changes have on diagnosis for Diverse Cohorts
+changes <- results |>
+  subset(column %in% c("CERAD", "Braak") & grepl("Diverse Cohorts", dataset)) |>
+  tidyr::pivot_wider(id_cols = "individualID",
+                     names_from = "column",
+                     values_from = c("previous_value", "corrected_value")) |>
+  mutate(ADoutcome = "missing or unknown")
+
+# Fill na values where a correction wasn't needed
+for (row_num in 1:nrow(changes)) {
+  row <- changes[row_num, ]
+  if (is.na(row$previous_value_Braak)) {
+    row$previous_value_Braak <- row$corrected_value_Braak <-
+      meta_dc$Braak[meta_dc$individualID == row$individualID]
+  }
+
+  if (is.na(row$previous_value_CERAD)) {
+    row$previous_value_CERAD <- row$corrected_value_CERAD <-
+      meta_dc$CERAD[meta_dc$individualID == row$individualID]
+  }
+
+  row$ADoutcome <- meta_dc$ADoutcome[meta_dc$individualID == row$individualID]
+
+  changes[row_num, ] <- row
+}
+
+changes <- changes |>
+  mutate(
+    new_ADoutcome = case_when(
+      corrected_value_Braak %in% c("Stage IV", "Stage V", "Stage VI") &
+        corrected_value_CERAD %in% c("Frequent/Definite/C3", "Moderate/Probable/C2") ~ "AD",
+      corrected_value_Braak %in% c("None", "Stage I", "Stage II", "Stage III") &
+        corrected_value_CERAD %in% c("None/No AD/C0", "Sparse/Possible/C1") ~ "Control",
+      corrected_value_Braak == "missing or unknown" |
+        corrected_value_CERAD == "missing or unknown" ~ "missing or unknown",
+      grepl("Unresolved", corrected_value_Braak) |
+        grepl("Unresolved", corrected_value_CERAD) ~ "Unresolvable conflict",
+      .default = "Other"
+    )
+  ) |>
+  subset(ADoutcome != new_ADoutcome)
+
+results <- rbind(
+  results,
+  data.frame(individualID = changes$individualID,
+             column = "ADoutcome",
+             type = ifelse(changes$ADoutcome == "missing or unknown", "missing", "conflict"),
+             dataset = "Diverse Cohorts",
+             previous_value = changes$ADoutcome,
+             corrected_value = changes$new_ADoutcome,
+             correction_source = "derived")
+)
 
 dc_missing_1.0_id <- data.frame(
   individualID = missing_1.0_id,
@@ -380,7 +461,7 @@ dc_missing_1.0_id <- data.frame(
   correction_source = "MSBB 1.0"
 )
 
-results <- rbind(results, dc_missing_1.0_id)
+#results <- rbind(results, dc_missing_1.0_id)
 
 res_stats <- results |>
   group_by(column, type) |>
@@ -388,5 +469,78 @@ res_stats <- results |>
   tidyr::pivot_wider(names_from = type, values_from = n, values_fill = 0) |>
   as.data.frame()
 
-write.csv(results, "msbb_mismatch_summary.csv", row.names = FALSE, quote = FALSE)
-write.csv(res_stats, "msbb_mismatch_stats.csv", row.names = FALSE, quote = FALSE)
+results_obf <- results |>
+  arrange(type, column) |>
+  # obfuscate individual ids
+  group_by(individualID) |>
+  mutate(obfuscatedID = obid[individualID], .before = individualID) |>
+  ungroup() |>
+  select(-individualID)
+
+write.csv(results_obf, "MSBB_error_stats/msbb_mismatch_details.csv", row.names = FALSE, quote = FALSE)
+write.csv(res_stats, "MSBB_error_stats/msbb_mismatch_stats.csv", row.names = FALSE, quote = FALSE)
+
+# Calculate the percentage of each data set affected by mismatches
+
+calc_percents <- function(df, n_total_individuals) {
+  total <- data.frame(column = "total",
+                      n_individuals = length(unique(df$individualID))) |>
+    mutate(pct_individuals = n_individuals / n_total_individuals * 100)
+
+  df <- df |>
+    group_by(column) |>
+    summarize(n_individuals = length(unique(individualID)),
+              pct_individuals = n_individuals / n_total_individuals * 100) |>
+    rbind(total)
+}
+
+msbb_1.0_missing <- subset(results,
+                           type == "missing" & grepl("MSBB 1.0", dataset)) |>
+  calc_percents(n_1.0_msbb)
+
+msbb_1.0_conflict <- subset(results,
+                            type == "conflict" & grepl("MSBB 1.0", dataset)) |>
+  calc_percents(n_1.0_msbb)
+
+dc_missing <- subset(results,
+                     type == "missing" & grepl("Diverse Cohorts", dataset)) |>
+  calc_percents(n_dc_msbb)
+
+dc_conflict <- subset(results,
+                      type == "conflict" & grepl("Diverse Cohorts", dataset)) |>
+  calc_percents(n_dc_msbb)
+
+new_dc_missing <- subset(results,
+                         type == "missing" & grepl("Diverse Cohorts", dataset) &
+                           !(individualID %in% meta_msbb$individualID)) |>
+  calc_percents(n_dc_only)
+
+new_dc_conflict <- subset(results,
+                          type == "conflict" &
+                            !(individualID %in% meta_msbb$individualID) &
+                            grepl("Diverse Cohorts", dataset)) |>
+  calc_percents(n_dc_only)
+
+n_nps_overlap <- nrow(meta_nps)
+
+nps_missing <- subset(results,
+                      type == "missing" & grepl("NPS-AD", dataset)) |>
+  calc_percents(n_nps_overlap)
+
+nps_conflict <- subset(results,
+                       type == "conflict" & grepl("NPS-AD", dataset)) |>
+  calc_percents(n_nps_overlap)
+
+output <- list("MSBB 1.0 missing" = msbb_1.0_missing,
+               "MSBB 1.0 error" = msbb_1.0_conflict,
+               "Diverse Cohorts missing" = dc_missing,
+               "Diverse Cohorts error" = dc_conflict,
+               "Diverse Cohorts missing (non-1.0 samples only)" = new_dc_missing,
+               "Diverse Cohorts error (non-1.0 samples only)" = new_dc_conflict,
+               "NPS-AD missing" = nps_missing,
+               "NPS-AD error" = nps_conflict)
+
+for (N in names(output)) {
+  write.csv(output[[N]], file = str_glue("MSBB_error_stats/{N}.csv"),
+            row.names = FALSE, quote = FALSE)
+}
