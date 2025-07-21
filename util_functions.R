@@ -917,3 +917,79 @@ fill_missing_ampad1.0_ids <- function(meta_all) {
     # Restore original column order
     select(all_of(col_order))
 }
+
+
+# Determine the value of ADoutcome for Diverse Cohorts data
+#
+# ADoutcome is not changed for data not from Diverse Cohorts, and data from
+# Diverse Cohorts but contributed by Mayo.
+#
+# Arguments:
+#   .data - a single row of a data frame, as from inside a rowwise() |> mutate() statement
+#   spec - a `config` object describing the standardized values for each field,
+#          as defined by this project's `GENESIS_harmonization.yml` file
+#
+# Returns:
+#   a single value for ADoutcome, one of "Control", "AD", "Other", or "missing or unknown"
+determineADoutcome <- function(.data, spec) {
+  # Don't make an ADoutcome value for non-Diverse Cohorts data, and don't change
+  # ADoutcome for samples coming from Mayo Clinic
+  if (.data[["study"]] != "AMP-AD_DiverseCohorts" |
+      .data[["derivedOutcomeBasedOnMayoDx"]] == TRUE) {
+    return(.data[["ADoutcome"]])
+  }
+
+  high_Braak <- .data[["Braak"]] %in% c(spec$Braak$stage4, spec$Braak$stage5,
+                                        spec$Braak$stage6)
+  low_Braak <- .data[["Braak"]] %in% c(spec$Braak$none, spec$Braak$stage1,
+                                       spec$Braak$stage2, spec$Braak$stage3)
+
+  high_amyCerad <- .data[["amyCerad"]] %in% c(spec$amyCerad$moderate,
+                                              spec$amyCerad$frequent)
+  low_amyCerad <- .data[["amyCerad"]] %in% c(spec$amyCerad$none,
+                                             spec$amyCerad$sparse)
+
+  ADoutcome <- case_when(
+    # AD: Braak IV-VI & Cerad Moderate or Frequent
+    high_Braak & high_amyCerad ~ "AD",
+
+    # Control: Braak 0-III & Cerad None or Sparse
+    low_Braak & low_amyCerad ~ "Control",
+
+    # Other: Braak IV-VI & Cerad None or Sparse
+    high_Braak & low_amyCerad ~ "Other",
+
+    # Other: Braak 0-III & Cerad Moderate or Frequent
+    low_Braak & high_amyCerad ~ "Other",
+
+    # Missing one or both of Braak and Cerad
+    .data[["Braak"]] == spec$missing |
+      .data[["amyCerad"]] == spec$missing ~ spec$missing,
+
+    .default = .data[["ADoutcome"]]
+  )
+
+  return(ADoutcome)
+}
+
+
+# Update ADoutcome values for Diverse Cohorts data in case Braak or amyCerad
+# values changed during de-duplication.
+#
+# ADoutcome is not changed for data not from Diverse Cohorts, and data from
+# Diverse Cohorts but contributed by Mayo.
+#
+# Arguments:
+#   meta_all - dataframe of harmonized data, which may contain data from any study
+#   spec - a `config` object describing the standardized values for each field,
+#          as defined by this project's `GENESIS_harmonization.yml` file
+#
+# Returns:
+#   meta_all with ADoutcome values updated for Diverse Cohorts data only
+updateADoutcome <- function(meta_all, spec) {
+  meta_all |>
+    rowwise() |>
+    mutate(ADoutcome = determineADoutcome(.data, spec)) |>
+    ungroup() |>
+    as.data.frame()
+}

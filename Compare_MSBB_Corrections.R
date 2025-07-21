@@ -90,7 +90,7 @@ to_Braak_stage <- function(num) {
 cols_include <- c("individualID", "sex", "race", "isHispanic",
                   "yearsEducation", "apoeGenotype", "ageDeath", "PMI",
                   "CERAD", "CERAD_original", "Braak", "Braak_original", "CDR",
-                  "ADoutcome")
+                  "ADoutcome", "dataContributionGroup")
 
 meta_msbb <- meta_msbb |>
   dplyr::rename(PMI = pmi,
@@ -252,7 +252,9 @@ mismatches <- lapply(dupes, function(dupe_id) {
 
   mismatch_cols <- data.frame()
 
-  for (col_name in setdiff(cols_include, c("individualID", "source", "CERAD_original", "Braak_original"))) {
+  for (col_name in setdiff(cols_include, c("individualID", "source",
+                                           "CERAD_original", "Braak_original",
+                                           "dataContributionGroup"))) {
     if (col_name == "CDR") {
       # Only MSBB 1.0 and NPS-AD have a CDR column
       vals <- unique(meta_tmp[meta_tmp$source %in% c("MSBB 1.0", "NPS-AD"), col_name])
@@ -270,15 +272,16 @@ mismatches <- lapply(dupes, function(dupe_id) {
       next
     }
 
+    meta_tmp_nomissing <- subset(meta_tmp, !val_is_missing(meta_tmp[, col_name]))
+
     if (length(vals) > 1 & any(val_is_missing(vals))) {
       mismatch_cols <- rbind(mismatch_cols,
                              mismatch_to_df(col_name, "missing", meta_tmp))
-      meta_tmp <- subset(meta_tmp, !val_is_missing(meta_tmp[, col_name]))
 
       if (col_name == "CDR") {
-        vals <- unique(meta_tmp[meta_tmp$source %in% c("MSBB 1.0", "NPS-AD"), col_name])
+        vals <- unique(meta_tmp_nomissing[meta_tmp_nomissing$source %in% c("MSBB 1.0", "NPS-AD"), col_name])
       } else {
-        vals <- unique(meta_tmp[, col_name])
+        vals <- unique(meta_tmp_nomissing[, col_name])
       }
     }
 
@@ -290,11 +293,11 @@ mismatches <- lapply(dupes, function(dupe_id) {
         equivalent <- sapply(num_vals, all.equal, num_vals[1], tolerance = 1e-3)
         if (any(equivalent != TRUE)) {
           mismatch_cols <- rbind(mismatch_cols,
-                                 mismatch_to_df(col_name, "conflict", meta_tmp))
+                                 mismatch_to_df(col_name, "conflict", meta_tmp_nomissing))
         }
       } else {
         mismatch_cols <- rbind(mismatch_cols,
-                               mismatch_to_df(col_name, "conflict", meta_tmp))
+                               mismatch_to_df(col_name, "conflict", meta_tmp_nomissing))
       }
     }
   }
@@ -390,12 +393,6 @@ resolve_conflicts <- function(df) {
     as.data.frame()
 }
 
-set.seed(101)
-obid <- sample(1:length(unique(mismatches_filt$individualID)),
-               length(unique(mismatches_filt$individualID)),
-               replace = FALSE)
-names(obid) <- unique(mismatches_filt$individualID)
-
 results <- resolve_conflicts(mismatches_filt)
 
 # See what effect Braak/Cerad changes have on diagnosis for Diverse Cohorts
@@ -469,15 +466,13 @@ res_stats <- results |>
   tidyr::pivot_wider(names_from = type, values_from = n, values_fill = 0) |>
   as.data.frame()
 
-results_obf <- results |>
-  arrange(type, column) |>
-  # obfuscate individual ids
-  group_by(individualID) |>
-  mutate(obfuscatedID = obid[individualID], .before = individualID) |>
-  ungroup() |>
-  select(-individualID)
+results_detail <- results |>
+  merge(select(meta_dc, individualID, dataContributionGroup) |> distinct(),
+        sort = FALSE, all.x = TRUE) |>
+  mutate(dataContributionGroup = ifelse(is.na(dataContributionGroup), "", dataContributionGroup),
+         is_1.0 = individualID %in% meta_msbb$individualID)
 
-write.csv(results_obf, "MSBB_error_stats/msbb_mismatch_details.csv", row.names = FALSE, quote = FALSE)
+write.csv(results_detail, "MSBB_error_stats/msbb_mismatch_details.csv", row.names = FALSE, quote = FALSE)
 write.csv(res_stats, "MSBB_error_stats/msbb_mismatch_stats.csv", row.names = FALSE, quote = FALSE)
 
 # Calculate the percentage of each data set affected by mismatches

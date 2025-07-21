@@ -40,7 +40,7 @@ syn_ids <- list(
   "MayoRNAseq" = "syn23277389.7",
   "MSBB" = "syn6101474.9",
   "ROSMAP" = "syn3191087.11",
-  "NPS-AD" = "syn55251012.4",
+  "NPS-AD" = "syn55251012.4", # intentionally one version behind due to v5 being a copy of the harmonized file generated here
   "NPS-AD_neuropath" = "syn55251003.1",
   # Access restricted to Sage internal
   "MSBB_corrections" = "syn66511661.2"
@@ -216,7 +216,8 @@ df_list[["NPS-AD"]] <- meta_new
 meta_all <- deduplicate_studies(df_list, spec, verbose = FALSE)
 
 meta_all <- subset(meta_all, study != "MSBB_corrections") |>
-  fill_missing_ampad1.0_ids() # For Diverse Cohorts
+  fill_missing_ampad1.0_ids() |> # For Diverse Cohorts
+  updateADoutcome(spec) # For Diverse Cohorts
 
 print_qc(meta_all)
 validate_values(meta_all, spec)
