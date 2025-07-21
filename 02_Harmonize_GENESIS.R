@@ -36,7 +36,7 @@ syn_ids <- list(
   "GEN-A10" = "syn25891193.1", # MCMPS
   "GEN-A11" = "syn31563038.1", # MC_snRNA
   "GEN-A12" = "syn51401700.2", # MC-BrAD
-  "Diverse_Cohorts" = "syn64759872.7" # Harmonized file, for GEN-B4
+  "Diverse_Cohorts" = "syn64759872.8" # Harmonized file, for GEN-B4
   # "GEN-B1" = "TBD",
   # "GEN-B2" = "TBD",
   # "GEN-B3" = "TBD"
