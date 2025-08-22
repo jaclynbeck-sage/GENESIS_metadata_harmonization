@@ -425,11 +425,11 @@ harmonize_ROSMAP <- function(metadata, spec) {
 # in the missing Hispanic/Latino information from the AI version.
 #
 # Source metadata files:
-#   * syn31149116 (version 7) on Synapse
+#   * syn31149116 (version 8) on Synapse
 #   * the "Donor Metadata" file downloaded from https://portal.brain-map.org.
 #     Full URL: https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/b4/c7/b4c727e1-ede1-4c61-b2ee-bf1ae4a3ef68/sea-ad_cohort_donor_metadata_072524.xlsx
 #
-# Modifications needed for version 7:
+# Modifications needed for version 8:
 #   * Rename several columns:
 #     * `pmi` => `PMI`
 #     * `Hispanic.Latino` => `isHispanic`
@@ -449,6 +449,9 @@ harmonize_ROSMAP <- function(metadata, spec) {
 #   * Add `bScore`, `amyA`, and `amyAny` columns
 #   * Add `cohort` ("SEA-AD"), `dataContributionGroup` ("Allen Institute")
 #       and `study` ("SEA-AD")
+#   * Use Atherosclerosis values from the Allen metadata (even though these
+#     aren't part of the harmonization), because v8 of the Synapse metadata
+#     incorrectly combines "None" and NA values.
 #
 # Arguments:
 #   metadata_synapse - a `data.frame` of metadata from the Synapse metadata
@@ -465,20 +468,31 @@ harmonize_ROSMAP <- function(metadata, spec) {
 harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
   # Keep only the Hispanic/Latino column and IDs from the Allen Institute data
   metadata_allen <- metadata_allen |>
-    select("Donor ID", "Hispanic/Latino")
+    select("Donor ID", "Hispanic/Latino", "Atherosclerosis")
+
+  metadata_synapse <- metadata_synapse |> select(-Atherosclerosis) # v8 fix
+
+  # v8 fix: match column names of v7
+  colnames(metadata_synapse) <- colnames(metadata_synapse) |>
+    str_replace_all("\\.", " ")
 
   meta <- merge(metadata_synapse, metadata_allen,
     by.x = "individualID",
     by.y = "Donor ID",
     all = TRUE
-  )
+  ) |>
+    dplyr::relocate(Atherosclerosis, .before = Arteriolosclerosis) # v8 fix
+
+  # v8 fix: Set all empty strings to NA to match previous versions
+  meta[meta == ""] <- NA
 
   meta |>
     dplyr::rename(
       PMI = pmi,
       isHispanic = "Hispanic/Latino",
       amyCerad = CERAD,
-      amyThal = "Thal phase"
+      amyThal = "Thal phase",
+      `LATE-NC stage` = "LATE NC stage" # v8 fix to match v7
     ) |>
     dplyr::mutate(
       isHispanic = case_match(isHispanic,
@@ -939,4 +953,207 @@ harmonize_MC_BrAD <- function(metadata, harmonized_baseline, spec) {
     select(all_of(colnames(meta_new)))
 
   return(meta_new)
+}
+
+
+# Harmonize BD2 / GEN-B8 metadata
+#
+# Modifies the BD2 donor metadata file to conform to the GENESIS data
+# dictionary. There are 14 samples that overlap with Diverse Cohorts/AMP-AD 1.0,
+# so missing Braak/amyCerad/amyThal values for those samples are filled in from
+# that data. Source metadata file: local download provided by Jaroslav Bendl on
+# July 16, 2025.
+#
+# Modifications needed for version July 16, 2025:
+#   * Rename columns:
+#     * `SubNum` => `individualID`
+#     * `Brain_bank` => `dataContributionGroup`
+#     * `Age` => `ageDeath`
+#     * `Sex` => `sex`
+#     * `Race` => `race`
+#   * Update `race` values to conform to the data dictionary
+#   * Change `sex` values to all lower case
+#   * Samples with `race` = "Hispanic" changed to `race` = "Other",
+#     `isHispanic` = "True"
+#   * Add missing columns `apoeGenotype`, `apoe4Status`, `amyCerad`, `amyAny`,
+#     `amyThal`, `amyA`, `Braak`, `bScore`
+#   * Add a `cohort` column with either "Mt Sinai Brain Bank" or "UPitt"
+#   * Change `dataContributionGroup` "UPitt" to "University of Pittsburgh"
+#   * Add `study` = "BD2"
+#
+# Arguments:
+#   metadata - a `data.frame` of metadata from the source metadata file. Columns
+#     are variables and rows are individuals.
+#   harmonized_baseline - a `data.frame` of de-duplicated and harmonized
+#     metadata from all AMP-AD 1.0 studies and Diverse Cohorts
+#   spec - a `config` object describing the standardized values for each field,
+#     as defined by this project's `GENESIS_harmonization.yml` file
+#
+# Returns:
+#   a `data.frame` with all relevant fields harmonized to the GENESIS data
+#   dictionary. Columns not defined in the data dictionary are left as-is.
+#
+harmonize_BD2 <- function(metadata, harmonized_baseline, spec) {
+  meta_new <- metadata |>
+    dplyr::rename(
+      individualID = SubNum,
+      dataContributionGroup = Brain_bank,
+      ageDeath = Age,
+      sex = Sex,
+      race = Race
+    ) |>
+    dplyr::mutate(
+      # Shouldn't need censoring but just in case
+      ageDeath = censor_ages(ageDeath, spec),
+      isHispanic = case_match(
+        race,
+        "Hispanic" ~ spec$isHispanic$hisp_true,
+        NA ~ spec$missing,
+        .default = spec$isHispanic$hisp_false
+      ),
+      race = case_match(
+        race,
+        "Black" ~ spec$race$Black,
+        "Hispanic" ~ spec$race$other,
+        NA ~ spec$missing,
+        .default = race
+      ),
+      sex = tolower(sex),
+      cohort = case_match(
+        dataContributionGroup,
+        "MSSM" ~ spec$cohort$msbb,
+        "UPitt" ~ spec$cohort$upitt,
+        .default = dataContributionGroup
+      ),
+      dataContributionGroup = case_match(
+        dataContributionGroup,
+        "MSSM" ~ spec$dataContributionGroup$mssm,
+        "UPitt" ~ spec$dataContributionGroup$upitt,
+        .default = dataContributionGroup
+      ),
+      # These are all missing
+      apoeGenotype = spec$missing,
+      amyCerad = spec$missing,
+      Braak = spec$missing,
+      amyThal = spec$missing,
+      apoe4Status = spec$missing,
+      amyAny = spec$missing,
+      amyA = spec$missing,
+      bScore = spec$missing,
+
+      study = spec$study$bd2
+    )
+
+  # Pull missing information from AMP-AD 1.0 and Diverse Cohorts metadata.
+  # Overlapping samples are identified in the Synapse_GENESIS and Synapse_MSSM
+  # columns.
+  meta_new <- meta_new |>
+    mutate(
+      bd2_id = individualID,
+      individualID = case_when(
+        nchar(Synapse_GENESIS) > 0 ~ Synapse_GENESIS,
+        nchar(Synapse_MSSM) > 0 ~ Synapse_MSSM,
+        .default = as.character(individualID)
+      )
+    )
+
+  meta_new <- deduplicate_studies(
+    list(meta_new, harmonized_baseline),
+    spec,
+    verbose = FALSE
+  ) |>
+    subset(study == spec$study$bd2) |>
+    mutate(individualID = bd2_id) |>
+    select(all_of(colnames(meta_new)), -bd2_id)
+
+  return(meta_new)
+}
+
+
+# Harmonize AMP-PD / GEN-A3 metadata
+#
+# Modifies the AMP-PD donor metadata file to conform to the GENESIS data
+# dictionary. Source metadata file: local download provided by Jaroslav Bendl on
+# Aug 18, 2025.
+#
+# Modifications needed for version Aug 18, 2025:
+#   * Rename columns:
+#     * `participant_id` => `individualID`
+#     * `Info.Institution` => `dataContributionGroup`
+#     * `Demographics.age_at_baseline` => `ageDeath`
+#     * `Demographics.sex` => `sex`
+#     * `Demographics.ethnicity` => `race`
+#     * `PMI.PMI_hours` => `PMI`
+#     * `LBD_Cohort_Path_Data.path_braak_nft` => `Braak`
+#     * `LBD_Cohort_Path_Data.path_cerad` => `amyCerad`
+#   * Update `race` values to conform to the data dictionary
+#   * Change `sex` values to all lower case
+#   * Samples with `race` = "AMR" changed to `race` = "missing or unknown",
+#     `isHispanic` = "True"
+#   * Add missing columns `apoeGenotype`, `apoe4Status`, `amyAny`, `amyThal`,
+#     `amyA`, `bScore`
+#   * Add a `cohort` column ??
+#   * Change `dataContributionGroup` values to conform to data dictionary
+#   * Add `study` = "AMP-PD"
+#
+# Arguments:
+#   metadata - a `data.frame` of metadata from the source metadata file. Columns
+#     are variables and rows are individuals.
+#   spec - a `config` object describing the standardized values for each field,
+#     as defined by this project's `GENESIS_harmonization.yml` file
+#
+# Returns:
+#   a `data.frame` with all relevant fields harmonized to the GENESIS data
+#   dictionary. Columns not defined in the data dictionary are left as-is.
+#
+harmonize_AMP_PD <- function(metadata, spec) {
+  metadata |>
+    dplyr::rename(
+      individualID = participant_id,
+      dataContributionGroup = Info.Institution,
+      ageDeath = Demographics.age_at_baseline,
+      sex = Demographics.sex,
+      race = Demographics.ethnicity, # TODO update when given access to Terra
+      PMI = PMI.PMI_hours,
+      Braak = LBD_Cohort_Path_Data.path_braak_nft,
+      amyCerad = LBD_Cohort_Path_Data.path_cerad
+    ) |>
+    dplyr::mutate(
+      ageDeath = censor_ages(ageDeath, spec),
+      isHispanic = case_match( # TODO update when given access to Terra
+        race,
+        "AMR" ~ spec$isHispanic$hisp_true,
+        NA ~ spec$missing,
+        .default = spec$isHispanic$hisp_false
+      ),
+      race = case_match( # TODO update when given access to Terra
+        race,
+        "AFR" ~ spec$race$Black,
+        "EUR" ~ spec$race$White,
+        "SAS" ~ spec$race$Asian,
+        c(NA, "AMR") ~ spec$missing,
+        .default = race
+      ),
+      sex = tolower(sex),
+      Braak = to_Braak_stage(Braak, spec),
+      amyCerad = ifelse(is.na(amyCerad), spec$missing, amyCerad),
+      bScore = get_bScore(Braak, spec),
+      amyAny = get_amyAny(amyCerad, spec),
+      cohort = "??", # TODO
+      dataContributionGroup = case_match(
+        dataContributionGroup,
+        "HA" ~ spec$dataContributionGroup$harvard,
+        "MS" ~ spec$dataContributionGroup$mssm,
+        "UD" ~ spec$dataContributionGroup$udall,
+        "UM" ~ spec$dataContributionGroup$umiami
+        .default = dataContributionGroup
+      ),
+      # These are all missing
+      apoeGenotype = spec$missing,
+      amyThal = spec$missing,
+      apoe4Status = spec$missing,
+      amyA = spec$missing,
+
+      study = spec$study$amp_pd
+    )
 }

@@ -6,6 +6,7 @@
 # The following data sets are harmonized in this script:
 #   GEN-A1 / NPS-AD
 #   GEN-A2 / ROSMAP
+#   GEN-A3 / AMP-PD
 #   GEN-A4 / SEA-AD
 #   GEN-A8 / snRNAseqAD_Trem2
 #   GEN-A9 / SMIB-AD
@@ -16,6 +17,7 @@
 #   GEN-B4 / AMP-AD_DiverseCohorts
 #   GEN-B5 / SEA-AD (multiome)
 #   GEN-B6 / MIT_ROSMAP_Multiomics
+#   GEN-B8 / BD2
 
 library(synapser)
 library(dplyr)
@@ -31,7 +33,8 @@ source("dataset_specific_functions.R")
 syn_ids <- list(
   "NPS-AD" = "syn65907234.4", # Harmonized file, for GEN-A1
   "ROSMAP" = "syn64759878.6", # Harmonized file, for GEN-A2, GEN-A8, GEN-A13, GEN-B6
-  "SEA-AD" = "syn31149116.7", # SEA-AD, for GEN-A4 and GEN-B5
+  "SEA-AD" = "syn31149116.8", # SEA-AD, for GEN-A4 and GEN-B5
+  # "GEN-A3" (AMP-PD) has a locally-downloaded file
   "GEN-A9" = "syn22432749.1", # SMIB-AD
   "GEN-A10" = "syn25891193.1", # MCMPS
   "GEN-A11" = "syn31563038.1", # MC_snRNA
@@ -40,7 +43,11 @@ syn_ids <- list(
   # "GEN-B1" = "TBD",
   # "GEN-B2" = "TBD",
   # "GEN-B3" = "TBD"
+  # "GEN-B8" (BD2) has a locally-downloaded file
 )
+
+amp_pd_local_filename <- file.path("data", "downloads", "AMP-PD_donor_metadata.csv")
+bd2_local_filename <- file.path("data", "downloads", "BD2_metadata.csv")
 
 synLogin()
 check_new_versions(syn_ids)
@@ -82,6 +89,44 @@ manifest <- rbind(
 )
 
 
+# GEN-A3 -----------------------------------------------------------------------
+
+# AMP-PD data, uses locally-downloaded file that is not on Synapse
+if (!file.exists(amp_pd_local_filename)) {
+  warning(str_glue("AMP-PD file {amp_pd_local_filename} doesn't exist! This ",
+                   "dataset will be excluded from harmonization."))
+} else {
+  meta <- read.csv(amp_pd_local_filename)
+
+  # colnames(meta) # Don't print, there are > 600 columns
+
+  print_qc(meta,
+           ageDeath_col = "Demographics.age_at_baseline",
+           race_col = "Demographics.ethnicity",
+           sex_col = "Demographics.sex",
+           pmi_col = "PMI.PMI_hours",
+           braak_col = "LBD_Cohort_Path_Data.path_braak_nft",
+           cerad_col = "LBD_Cohort_Path_Data.path_cerad")
+
+  meta_new <- harmonize_AMP_PD(meta, spec)
+
+  print_qc(meta_new)
+  validate_values(meta_new, spec)
+
+  new_filename <- write_metadata(meta_new, basename(amp_pd_local_filename))
+  new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
+
+  manifest <- rbind(
+    manifest,
+    data.frame(
+      GENESIS_study = "GEN-A3",
+      study = spec$study$amp_pd,
+      metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
+    )
+  )
+}
+
+
 # GEN-A4, GEN-B5 ---------------------------------------------------------------
 
 # Uses SEA-AD metadata. The version of SEA-AD that is on Synapse is missing
@@ -96,13 +141,13 @@ download.file("https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-med
   destfile = sea_ad_file
 )
 
-meta <- read_xlsx(meta_file$path)
+meta <- read.csv(meta_file$path, row.names = 1)
 meta_sea_ad <- read_xlsx(sea_ad_file)
 
 colnames(meta)
 colnames(meta_sea_ad)
 
-print_qc(meta, pmi_col = "pmi", cerad_col = "CERAD", thal_col = "Thal phase")
+print_qc(meta, pmi_col = "pmi", cerad_col = "CERAD", thal_col = "Thal.phase")
 print_qc(meta_sea_ad, isHispanic_col = "Hispanic/Latino")
 
 meta_new <- harmonize_SEA_AD(meta, meta_sea_ad, spec)
@@ -110,9 +155,7 @@ meta_new <- harmonize_SEA_AD(meta, meta_sea_ad, spec)
 print_qc(meta_new)
 validate_values(meta_new, spec)
 
-# Original file is an Excel file, change filename to CSV file
-file_write <- str_replace(meta_file$name, "xlsx", "csv")
-new_filename <- write_metadata(meta_new, file_write)
+new_filename <- write_metadata(meta_new, meta_file$name)
 new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
 
 manifest <- rbind(
@@ -264,6 +307,38 @@ manifest <- rbind(
     metadata_synid = syn_ids[["Diverse_Cohorts"]]
   )
 )
+
+
+# GEN-B8 -----------------------------------------------------------------------
+
+# BD2 data, uses locally-downloaded file that is not on Synapse
+if (!file.exists(bd2_local_filename)) {
+  warning(str_glue("BD2 file {bd2_local_filename} doesn't exist! This dataset ",
+                   "will be excluded from harmonization."))
+} else {
+  meta <- read.csv(bd2_local_filename)
+
+  colnames(meta)
+
+  print_qc(meta, ageDeath_col = "Age", race_col = "Race", sex_col = "Sex")
+
+  meta_new <- harmonize_BD2(meta, harmonized_baseline, spec)
+
+  print_qc(meta_new)
+  validate_values(meta_new, spec)
+
+  new_filename <- write_metadata(meta_new, basename(bd2_local_filename))
+  new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
+
+  manifest <- rbind(
+    manifest,
+    data.frame(
+      GENESIS_study = "GEN-B8",
+      study = spec$study$bd2,
+      metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
+    )
+  )
+}
 
 
 # Upload manifest file ---------------------------------------------------------
