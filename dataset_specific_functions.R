@@ -1145,7 +1145,7 @@ harmonize_AMP_PD <- function(metadata, spec) {
         "HA" ~ spec$dataContributionGroup$harvard,
         "MS" ~ spec$dataContributionGroup$mssm,
         "UD" ~ spec$dataContributionGroup$udall,
-        "UM" ~ spec$dataContributionGroup$umiami
+        "UM" ~ spec$dataContributionGroup$umiami,
         .default = dataContributionGroup
       ),
       # These are all missing

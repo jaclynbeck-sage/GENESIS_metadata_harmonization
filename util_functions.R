@@ -396,8 +396,10 @@ censor_ages <- function(ages, spec) {
 # Write a metadata data frame to a file
 #
 # This is a wrapper around `write.csv` that has some extra handling for values
-# that contain commas. Values with commas need to be escaped with quotes for a
-# CSV file, and some data sets have them escaped already and some don't.
+# that contain commas and end of line characters (\n). Values with commas
+# need to be escaped with quotes for a CSV file, and some data sets have them
+# escaped already and some don't. \n characters are removed entirely, as quote
+# escaping doesn't affect them.
 #
 # Arguments:
 #   metadata - a data frame of harmonized metadata where rows are individuals
@@ -416,6 +418,9 @@ write_metadata <- function(metadata, filename) {
       # Columns that contain commas and aren't already escaped with quotes
       commas <- grepl(",", metadata[, column]) & !grepl("\"", metadata[, column])
       metadata[commas, column] <- paste0("\"", metadata[commas, column], "\"")
+
+      # Remove any "\n" characters
+      metadata[, column] <- str_replace_all(metadata[, column], "\n", "")
     }
   }
 

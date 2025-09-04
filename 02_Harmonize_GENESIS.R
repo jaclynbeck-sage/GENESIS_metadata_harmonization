@@ -29,6 +29,10 @@ spec <- config::get(file = "GENESIS_harmonization.yml")
 source("util_functions.R")
 source("dataset_specific_functions.R")
 
+# TRUE will print column names of metadata + unique values for each dataset.
+# FALSE will only print the status of the harmonized metadata for each dataset.
+verbose <- FALSE
+
 
 syn_ids <- list(
   "NPS-AD" = "syn65907234.4", # Harmonized file, for GEN-A1
@@ -98,32 +102,39 @@ if (!file.exists(amp_pd_local_filename)) {
 } else {
   meta <- read.csv(amp_pd_local_filename)
 
-  # colnames(meta) # Don't print, there are > 600 columns
+  if (verbose) {
+    # colnames(meta) # Don't print, there are > 600 columns
 
-  print_qc(meta,
-           ageDeath_col = "Demographics.age_at_baseline",
-           race_col = "Demographics.ethnicity",
-           sex_col = "Demographics.sex",
-           pmi_col = "PMI.PMI_hours",
-           braak_col = "LBD_Cohort_Path_Data.path_braak_nft",
-           cerad_col = "LBD_Cohort_Path_Data.path_cerad")
+    print_qc(meta,
+             ageDeath_col = "Demographics.age_at_baseline",
+             race_col = "Demographics.ethnicity",
+             sex_col = "Demographics.sex",
+             pmi_col = "PMI.PMI_hours",
+             braak_col = "LBD_Cohort_Path_Data.path_braak_nft",
+             cerad_col = "LBD_Cohort_Path_Data.path_cerad")
+  }
 
   meta_new <- harmonize_AMP_PD(meta, spec)
 
-  print_qc(meta_new)
+  if (verbose) {
+    print_qc(meta_new)
+  }
+
+  cat("\nGEN-A3 /", spec$study$amp_pd, "\n")
   validate_values(meta_new, spec)
 
+  # TODO temporary: Don't upload this file yet
   new_filename <- write_metadata(meta_new, basename(amp_pd_local_filename))
-  new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
+  #new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
 
-  manifest <- rbind(
-    manifest,
-    data.frame(
-      GENESIS_study = "GEN-A3",
-      study = spec$study$amp_pd,
-      metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
-    )
-  )
+  #manifest <- rbind(
+  #  manifest,
+  #  data.frame(
+  #    GENESIS_study = "GEN-A3",
+  #    study = spec$study$amp_pd,
+  #    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
+  #  )
+  #)
 }
 
 
@@ -144,15 +155,21 @@ download.file("https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-med
 meta <- read.csv(meta_file$path, row.names = 1)
 meta_sea_ad <- read_xlsx(sea_ad_file)
 
-colnames(meta)
-colnames(meta_sea_ad)
+if (verbose) {
+  colnames(meta)
+  colnames(meta_sea_ad)
 
-print_qc(meta, pmi_col = "pmi", cerad_col = "CERAD", thal_col = "Thal.phase")
-print_qc(meta_sea_ad, isHispanic_col = "Hispanic/Latino")
+  print_qc(meta, pmi_col = "pmi", cerad_col = "CERAD", thal_col = "Thal.phase")
+  print_qc(meta_sea_ad, isHispanic_col = "Hispanic/Latino")
+}
 
 meta_new <- harmonize_SEA_AD(meta, meta_sea_ad, spec)
 
-print_qc(meta_new)
+if (verbose) {
+  print_qc(meta_new)
+}
+
+cat("\nGEN-A4 & B5 /", spec$study$sea_ad, "\n")
 validate_values(meta_new, spec)
 
 new_filename <- write_metadata(meta_new, meta_file$name)
@@ -181,13 +198,19 @@ manifest <- rbind(
 meta_file <- synapse_download(syn_ids[["GEN-A9"]])
 meta <- read.csv(meta_file$path)
 
-colnames(meta)
+if (verbose) {
+  colnames(meta)
 
-print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity", cerad_col = "CERAD")
+  print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity", cerad_col = "CERAD")
+}
 
 meta_new <- harmonize_SMIB_AD(meta, spec)
 
-print_qc(meta_new)
+if (verbose) {
+  print_qc(meta_new)
+}
+
+cat("\nGEN-A9 /", spec$study$smib_ad, "\n")
 validate_values(meta_new, spec)
 
 new_filename <- write_metadata(meta_new, meta_file$name)
@@ -211,13 +234,19 @@ manifest <- rbind(
 meta_file <- synapse_download(syn_ids[["GEN-A10"]])
 meta <- read.csv(meta_file$path)
 
-colnames(meta)
+if (verbose) {
+  colnames(meta)
 
-print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity", cerad_col = "CERAD")
+  print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity", cerad_col = "CERAD")
+}
 
 meta_new <- harmonize_MCMPS(meta, spec)
 
-print_qc(meta_new)
+if (verbose) {
+  print_qc(meta_new)
+}
+
+cat("\nGEN-A10 /", spec$study$mcmps, "\n")
 validate_values(meta_new, spec)
 
 new_filename <- write_metadata(meta_new, meta_file$name)
@@ -242,13 +271,19 @@ manifest <- rbind(
 meta_file <- synapse_download(syn_ids[["GEN-A11"]])
 meta <- read.csv(meta_file$path)
 
-colnames(meta)
+if (verbose) {
+  colnames(meta)
 
-print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity", cerad_col = "CERAD")
+  print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity", cerad_col = "CERAD")
+}
 
 meta_new <- harmonize_MC_snRNA(meta, harmonized_baseline, spec)
 
-print_qc(meta_new)
+if (verbose) {
+  print_qc(meta_new)
+}
+
+cat("\nGEN-A11 /", spec$study$mc_snrna, "\n")
 validate_values(meta_new, spec)
 
 new_filename <- write_metadata(meta_new, meta_file$name)
@@ -273,14 +308,20 @@ manifest <- rbind(
 meta_file <- synapse_download(syn_ids[["GEN-A12"]])
 meta <- read.csv(meta_file$path)
 
-colnames(meta)
+if (verbose) {
+  colnames(meta)
 
-print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity",
-         cerad_col = "CERAD", thal_col = "Thal")
+  print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity",
+           cerad_col = "CERAD", thal_col = "Thal")
+}
 
 meta_new <- harmonize_MC_BrAD(meta, harmonized_baseline, spec)
 
-print_qc(meta_new)
+if (verbose) {
+  print_qc(meta_new)
+}
+
+cat("\nGEN-A12 /", spec$study$mc_brad, "\n")
 validate_values(meta_new, spec)
 
 new_filename <- write_metadata(meta_new, meta_file$name)
@@ -318,13 +359,19 @@ if (!file.exists(bd2_local_filename)) {
 } else {
   meta <- read.csv(bd2_local_filename)
 
-  colnames(meta)
+  if (verbose) {
+    colnames(meta)
 
-  print_qc(meta, ageDeath_col = "Age", race_col = "Race", sex_col = "Sex")
+    print_qc(meta, ageDeath_col = "Age", race_col = "Race", sex_col = "Sex")
+  }
 
   meta_new <- harmonize_BD2(meta, harmonized_baseline, spec)
 
-  print_qc(meta_new)
+  if (verbose) {
+    print_qc(meta_new)
+  }
+
+  cat("\nGEN-B8 /", spec$study$bd2, "\n")
   validate_values(meta_new, spec)
 
   new_filename <- write_metadata(meta_new, basename(bd2_local_filename))
@@ -357,17 +404,17 @@ df_list <- apply(manifest, 1, function(m_row) {
   m_file <- synapse_download(m_row[["metadata_synid"]])
   meta <- read.csv(m_file$path) |>
     mutate(
-      individualID = as.character(individualID),
-      apoeGenotype = as.character(apoeGenotype),
-      amyAny = as.character(amyAny),
+      across(c(individualID, ageDeath, apoeGenotype, amyAny), as.character),
       GENESIS_study = m_row[["GENESIS_study"]],
       study = m_row[["study"]]
-    )
+    ) #|>
+    #select(all_of(expectedColumns), GENESIS_study)
   return(meta)
 }, simplify = FALSE)
 
 df_all <- purrr::list_rbind(df_list)
 
+cat("\nMerged metadata\n")
 validate_values(df_all, spec)
 
 # df_all <- df_all |>
