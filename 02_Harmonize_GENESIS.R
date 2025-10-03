@@ -14,6 +14,7 @@
 #   GEN-A11 / MC_snRNA
 #   GEN-A12 / MC-BrAD
 #   GEN-A13 / snRNAseqPFC_BA10
+#   GEN-A15 / ASAP
 #   GEN-B4 / AMP-AD_DiverseCohorts
 #   GEN-B5 / SEA-AD (multiome)
 #   GEN-B6 / MIT_ROSMAP_Multiomics
@@ -43,15 +44,24 @@ syn_ids <- list(
   "GEN-A10" = "syn25891193.1", # MCMPS
   "GEN-A11" = "syn31563038.1", # MC_snRNA
   "GEN-A12" = "syn51401700.2", # MC-BrAD
+  # "GEN-A15" (ASAP) has a locally-downloaded file
   "Diverse_Cohorts" = "syn64759872.8" # Harmonized file, for GEN-B4
-  # "GEN-B1" = "TBD",
-  # "GEN-B2" = "TBD",
-  # "GEN-B3" = "TBD"
+  # "GEN-B1" = "ADSP - TBD",
+  # "GEN-B2" = "TBD - Diverse Cohorts again?",
+  # "GEN-B3" = "TBD - ROSMAP Multiome again?"
   # "GEN-B8" (BD2) has a locally-downloaded file
 )
 
-amp_pd_local_filename <- file.path("data", "downloads", "AMP-PD_donor_metadata.csv")
+amp_pd_local_filenames <- list(
+  "main_file" = file.path("data", "downloads", "AMP-PD_donor_metadata.csv"),
+  "demographics" = file.path("data", "downloads",
+                             "releases_2023_v4release_1027_clinical_Demographics.csv")
+)
 bd2_local_filename <- file.path("data", "downloads", "BD2_metadata.csv")
+asap_local_filenames <- list(
+  "clinical" = file.path("data", "downloads", "ASAP_clinpath-export-2025-10-02.csv"),
+  "subject" = file.path("data", "downloads", "ASAP_subject-export-2025-10-02.csv")
+)
 
 synLogin()
 check_new_versions(syn_ids)
@@ -95,12 +105,16 @@ manifest <- rbind(
 
 # GEN-A3 -----------------------------------------------------------------------
 
-# AMP-PD data, uses locally-downloaded file that is not on Synapse
-if (!file.exists(amp_pd_local_filename)) {
-  warning(str_glue("AMP-PD file {amp_pd_local_filename} doesn't exist! This ",
-                   "dataset will be excluded from harmonization."))
+# AMP-PD data, uses locally-downloaded files that are not on Synapse
+if (!file.exists(amp_pd_local_filenames$main_file)) {
+  warning(str_glue("AMP-PD file {amp_pd_local_filenames$main_file} doesn't ",
+                   "exist! This dataset will be excluded from harmonization."))
+} else if (!file.exists(amp_pd_local_filenames$demographics)) {
+  warning(str_glue("AMP-PD file {amp_pd_local_filenames$demographics} doesn't ",
+                   "exist! This dataset will be excluded from harmonization."))
 } else {
-  meta <- read.csv(amp_pd_local_filename)
+  meta <- read.csv(amp_pd_local_filenames$main_file)
+  demographics <- read.csv(amp_pd_local_filenames$demographics)
 
   if (verbose) {
     # colnames(meta) # Don't print, there are > 600 columns
@@ -336,6 +350,59 @@ manifest <- rbind(
   )
 )
 
+
+# GEN-A15 ----------------------------------------------------------------------
+
+# ASAP metadata is split across two files
+if (!file.exists(asap_local_filenames$subject)) {
+  warning(str_glue("ASAP file {asap_local_filenames$subject} doesn't exist! ",
+                   "This dataset will be excluded from harmonization."))
+} else if (!file.exists(asap_local_filenames$clinical)) {
+  warning(str_glue("ASAP file {asap_local_filenames$clinical} doesn't exist! ",
+                   "This dataset will be excluded from harmonization."))
+} else {
+  subj <- read.csv(asap_local_filenames$subject)
+  clin <- read.csv(asap_local_filenames$clinical)
+
+  meta <- merge(subj, clin)
+
+  if (verbose) {
+    colnames(meta)
+
+    print_qc(meta, pmi_col = "duration_pmi", ageDeath_col = "age_at_death",
+             braak_col = "path_braak_nft", cerad_col = "path_cerad",
+             thal_col = "path_thal", isHispanic_col = "ethnicity",
+             apoe_col = "apoe_e4_status")
+  }
+
+  meta_new <- harmonize_ASAP(meta, spec)
+
+  if (verbose) {
+    print_qc(meta_new)
+  }
+
+  cat("\nGEN-A15 /", spec$study$asap, "\n")
+  validate_values(meta_new, spec)
+
+  new_filename <- write_metadata(meta_new, "ASAP_PMDBS_metadata")
+  new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
+
+  manifest <- rbind(
+    manifest,
+    data.frame(
+      GENESIS_study = "GEN-A15",
+      study = spec$study$asap,
+      metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
+    )
+  )
+}
+
+
+# GEN-A16 ----------------------------------------------------------------------
+# McCarroll SCZ
+
+# GEN-A17 ----------------------------------------------------------------------
+# McCarroll HD
 
 # GEN-B4 -----------------------------------------------------------------------
 # Uses Diverse Cohorts metadata

@@ -615,7 +615,7 @@ deduplicate_studies <- function(df_list,
   df_list <- lapply(df_list, function(df_item) {
     df_item |>
       mutate(
-        across(c(individualID, apoeGenotype, amyAny), as.character),
+        across(any_of(c("individualID", "apoeGenotype", "amyAny")), as.character),
         # Special case: MSBB/MSSM samples were re-named for Diverse Cohorts, this
         # makes them directly comparable
         original_individualID = individualID,
@@ -678,8 +678,8 @@ deduplicate_studies <- function(df_list,
           cat(report_string)
         }
 
-        # Remove NA and "missing or unknown" values and see what's left
-        leftover <- setdiff(unique_vals, spec$missing) |>
+        # Remove NA, "", and "missing or unknown" values and see what's left
+        leftover <- setdiff(unique_vals, c(spec$missing, "")) |>
           na.omit()
 
         # If one unique value left, replace all values with that value

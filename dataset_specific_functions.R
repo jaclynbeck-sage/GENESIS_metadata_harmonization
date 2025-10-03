@@ -1157,3 +1157,151 @@ harmonize_AMP_PD <- function(metadata, spec) {
       study = spec$study$amp_pd
     )
 }
+
+
+# Harmonize ASAP / GEN-A15 metadata
+#
+# Modifies the ASAP subject and clinical metadata files to conform to the
+# GENESIS data dictionary. Data downloaded via command line on Oct 02, 2025,
+# from https://cloud.parkinsonsroadmap.org
+#
+# Download commands used:
+#   dnastack use cloud.parkinsonsroadmap.org
+#   dnastack collections query -c prod-postmortem-derived-brain-sequencing-collection "SELECT * FROM \"collections\".\"prod_postmortem_derived_brain_sequencing_collection\".\"cohort_subject\"" -o csv > "data/downloads/ASAP_subject-export-2025-10-02.csv"
+#   dnastack collections query -c prod-postmortem-derived-brain-sequencing-collection "SELECT * FROM \"collections\".\"prod_postmortem_derived_brain_sequencing_collection\".\"cohort_clinpath\"" -o csv > "data/downloads/ASAP_clinpath-export-2025-10-02.csv"
+#
+# Modifications needed for version Oct 02, 2025:
+#   * Rename columns:
+#     * `age_at_death` => `ageDeath`
+#     * `duration_pmi` => `PMI`
+#     * `ethnicity` => `isHispanic`
+#     * `path_braak_nft` => `Braak`
+#     * `path_cerad` => `amyCerad`
+#     * `path_thal` => `amyThal`
+#     * `apoe_e4_status` => `apoeGenotype`
+#     * `biobank_name` => `cohort`
+#   * Add an `individualID` column that uses `asap_dataset_id` values. The
+#     column `asap_dataset_id` is left in the data set despite being a duplicate
+#     of individualID due to its ubiquitous use in other ASAP metadata files.
+#     Leaving the column named as-is makes it easier to merge with other files.
+#   * Censor ages over 90
+#   * Set empty string ("") values in the `race`, `isHispanic`, `Braak`,
+#     `amyCerad`, and `amyThal` columns to "missing or unknown"
+#   * Change `sex` values to all lower case
+#   * Change `isHispanic` "Not Reported" values to "missing or unknown"
+#   * Update `Braak`, `amyCerad`, `amyThal`, and `cohort` values to conform to
+#     the data dictionary.
+#   * Add `dataContributionGroup` values based on the `asap_team_id` values.
+#   * Add missing columns `bScore`, `amyAny`, `amyA`, `apoe4Status`
+#   * Add `study` = "ASAP"
+#   * Deduplicate rows with the same individual, which are identical except for
+#     some columns where one row is missing a value and one has the value, or
+#     where two different groups typed slightly different values for the same
+#     column
+#
+# Arguments:
+#   metadata - a `data.frame` of metadata from the source metadata file. Columns
+#     are variables and rows are individuals.
+#   spec - a `config` object describing the standardized values for each field,
+#     as defined by this project's `GENESIS_harmonization.yml` file
+#
+# Returns:
+#   a `data.frame` with all relevant fields harmonized to the GENESIS data
+#   dictionary. Columns not defined in the data dictionary are left as-is.
+harmonize_ASAP <- function(metadata, spec) {
+  meta_new <- metadata |>
+    dplyr::rename(
+      ageDeath = age_at_death,
+      PMI = duration_pmi,
+      isHispanic = ethnicity,
+      Braak = path_braak_nft,
+      amyCerad = path_cerad,
+      amyThal = path_thal,
+      apoeGenotype = apoe_e4_status,
+      cohort = biobank_name
+    ) |>
+    mutate(
+      # Keep the field named "asap_subject_id" but add individualID column
+      individualID = asap_subject_id,
+      ageDeath = censor_ages(ageDeath, spec),
+      sex = tolower(sex),
+      # All filled-in values in the race column are already correct
+      race = case_match(
+        race,
+        "" ~ spec$missing,
+        .default = race
+      ),
+      # There aren't any non-missing or non "Not Reported" values
+      isHispanic = case_match(
+        isHispanic,
+        c("", "Not Reported") ~ spec$missing,
+        .default = isHispanic
+      ),
+      # Braak is already in Roman numerals except for "0" and ""
+      Braak = case_match(
+        Braak,
+        "" ~ spec$missing,
+        "0" ~ spec$Braak$none,
+        .default = paste("Stage", Braak)
+      ),
+      bScore = get_bScore(Braak, spec),
+      # It's unclear whether missing values mean "None" or "missing" so they
+      # have been set to "missing".
+      amyCerad = case_match(
+        amyCerad,
+        "" ~ spec$missing,
+        "Sparse" ~ spec$amyCerad$sparse,
+        "Moderate" ~ spec$amyCerad$moderate,
+        "Frequent" ~ spec$amyCerad$frequent,
+        .default = amyCerad
+      ),
+      amyAny = get_amyAny(amyCerad, spec),
+      amyThal = case_match(
+        amyThal,
+        "" ~ spec$missing,
+        "4/5" ~ spec$amyThal$phase5, # Round up to phase 5
+        c("0", "0.0") ~ spec$amyThal$none,
+        .default = paste("Phase", suppressWarnings(as.numeric(amyThal)))
+      ),
+      amyA = get_amyA(amyThal, spec),
+      # All apoe genotype values are already correct, just fill in NA values
+      apoeGenotype = ifelse(is.na(apoeGenotype), spec$missing, apoeGenotype),
+      apoe4Status = get_apoe4Status(apoeGenotype, spec),
+      cohort = case_match(
+        cohort,
+        c("BSHRI", "Banner Sun Health Research Institute") ~ spec$cohort$banner,
+        "QSBB_UK" ~ spec$cohort$qsbb,
+        .default = cohort
+      ),
+      dataContributionGroup = spec$dataContributionGroup$asap,
+      study = spec$study$asap
+    ) |>
+    # Put the harmonized columns first in the data frame
+    select(all_of(expectedColumns), !any_of(expectedColumns))
+
+  # De-duplicate individuals
+  meta_new <- deduplicate_studies(
+    list(meta_new), spec,
+    include_cols = colnames(meta_new),
+    exclude_cols = c("asap_dataset_id", "subject_id", "asap_team_id"),
+    verbose = FALSE
+    ) |>
+    distinct() |>
+    # For any fields that had different non-missing values in them, concatenate
+    # the values together, separated by "; ". This happens when two different
+    # groups contributed metadata from the same individual and typed something
+    # slightly different for the same column.
+    group_by(individualID) |>
+    summarize(
+      across(
+        everything(),
+        ~ ifelse(is.numeric(.x),
+                 .x, # Leave numeric values alone but keep them in the data frame
+                 paste(unique(.x), collapse = "; "))
+      )
+    ) |>
+    distinct() |>
+    as.data.frame()
+
+  return(meta_new)
+}
