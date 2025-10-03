@@ -69,7 +69,7 @@ print_qc(meta,
   thal_col = "Thal"
 )
 
-meta_new <- harmonize_MayoRNAseq(meta, spec) |>
+meta_new <- harmonize(spec$study$mayo, meta, spec) |>
   mutate(filename = meta_file$name)
 
 print_qc(meta_new)
@@ -93,7 +93,7 @@ print_qc(meta,
   cerad_col = "CERAD"
 )
 
-meta_new <- harmonize_MSBB(meta, spec) |>
+meta_new <- harmonize(spec$study$msbb, meta, spec) |>
   mutate(filename = meta_file$name)
 
 print_qc(meta_new)
@@ -120,7 +120,7 @@ print_qc(meta,
          braak_col = "B&B Alz"
 )
 
-meta_new <- harmonize_MSBB_corrections(meta, spec)
+meta_new <- harmonize("MSBB_corrections", meta, spec)
 
 print_qc(meta_new)
 
@@ -148,7 +148,7 @@ print_qc(meta,
   cerad_col = "ceradsc"
 )
 
-meta_new <- harmonize_ROSMAP(meta, spec) |>
+meta_new <- harmonize(spec$study$rosmap, meta, spec) |>
   mutate(filename = meta_file$name)
 
 print_qc(meta_new)
@@ -175,7 +175,7 @@ colnames(meta)
 
 print_qc(meta)
 
-meta_new <- harmonize_Diverse_Cohorts(meta, spec) |>
+meta_new <- harmonize(spec$study$diverse_cohorts, meta, spec) |>
   mutate(filename = meta_file$name)
 
 print_qc(meta_new)
@@ -202,7 +202,7 @@ colnames(meta)
 print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
 print_qc(neuropath, cerad_col = "CERAD", braak_col = "BRAAK_AD")
 
-meta_new <- harmonize_NPS_AD(meta, neuropath, spec) |>
+meta_new <- harmonize(spec$study$nps_ad, meta, spec, extra_metadata = neuropath) |>
   mutate(filename = meta_file$name)
 
 print_qc(meta_new)

@@ -114,16 +114,19 @@ if (!file.exists(amp_pd_local_filenames$main_file)) {
                    "exist! This dataset will be excluded from harmonization."))
 } else {
   meta <- read.csv(amp_pd_local_filenames$main_file)
-  demographics <- read.csv(amp_pd_local_filenames$demographics)
+  demographics <- read.csv(amp_pd_local_filenames$demographics) |>
+    select(participant_id, race, ethnicity)
+
+  meta <- merge(meta, demographics)
 
   if (verbose) {
     # colnames(meta) # Don't print, there are > 600 columns
 
     print_qc(meta,
              ageDeath_col = "Demographics.age_at_baseline",
-             race_col = "Demographics.ethnicity",
              sex_col = "Demographics.sex",
              pmi_col = "PMI.PMI_hours",
+             isHispanic_col = "ethnicity",
              braak_col = "LBD_Cohort_Path_Data.path_braak_nft",
              cerad_col = "LBD_Cohort_Path_Data.path_cerad")
   }
@@ -138,7 +141,7 @@ if (!file.exists(amp_pd_local_filenames$main_file)) {
   validate_values(meta_new, spec)
 
   # TODO temporary: Don't upload this file yet
-  new_filename <- write_metadata(meta_new, basename(amp_pd_local_filename))
+  new_filename <- write_metadata(meta_new, basename(amp_pd_local_filenames$main_file))
   #new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
 
   #manifest <- rbind(

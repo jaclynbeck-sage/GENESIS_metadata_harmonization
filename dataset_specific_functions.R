@@ -4,6 +4,72 @@
 # specific versions of each source file and may need to be updated if the source
 # metadata file is updated.
 
+# Generic harmonization function
+#
+# Runs the appropriate dataset-specific function to rename and harmonize
+# variables, fills in any NA values with "missing or unknown", and adds any
+# missing columns to the data frame.
+harmonize <- function(study_name, metadata, spec, harmonized_baseline = NULL,
+                      extra_metadata = NULL) {
+  # Study-specific harmonization
+  metadata <- switch(
+    study_name,
+    "AMP-PD" = harmonize_AMP_PD(metadata, spec),
+    "ASAP" = harmonize_ASAP(metadata, spec),
+    "BD2" = harmonize_BD2(metadata, harmonized_baseline, spec),
+    "AMP-AD_DiverseCohorts" = harmonize_Diverse_Cohorts(metadata, spec),
+    "MayoRNAseq" = harmonize_MayoRNAseq(metadata, spec),
+    "MC-BrAD" = harmonize_MC_BrAD(metadata, harmonized_baseline, spec),
+    "MC_snRNA" = harmonize_MC_snRNA(metadata, harmonized_baseline, spec),
+    "MCMPS" = harmonize_MCMPS(metadata, spec),
+    "MSBB" = harmonize_MSBB(metadata, spec),
+    "NPS-AD" = harmonize_NPS_AD(metadata, extra_metadata, spec),
+    "ROSMAP" = harmonize_ROSMAP(metadata, spec),
+    "SEA-AD" = harmonize_SEA_AD(metadata, extra_metadata, spec),
+    "SMIB-AD" = harmonize_SMIB_AD(metadata, spec),
+    "MSBB_corrections" = harmonize_MSBB_corrections(metadata, spec), # TODO temporary
+    .default = metadata
+  )
+
+  # Helper function to fill in NA values with "missing or unknown" in all non-numeric fields
+  fillna <- function(column) {
+    if (!is.numeric(column)) {
+      column = ifelse(is.na(column), spec$missing, column)
+    }
+    return(column)
+  }
+
+  # Add any missing fields
+  missing_fields <- setdiff(expectedColumns, colnames(metadata))
+  for (field in missing_fields) {
+    metadata[, field] <- spec$missing
+  }
+
+  # Don't fill NA values with "missing" in the ageDeath or PMI columns
+  cols_fill <- setdiff(expectedColumns, c("ageDeath", "PMI"))
+
+  metadata <- metadata |>
+    mutate(
+      # Fix fields that might be read in as numeric but should be characters
+      across(any_of(cols_fill), as.character),
+      # Fill NAs in character columns as "missing or unknown"
+      across(any_of(cols_fill), fillna),
+      # Add or update derived columns
+      apoe4Status = get_apoe4Status(apoeGenotype, spec),
+      amyAny = get_amyAny(amyCerad, spec),
+      amyA = get_amyA(amyThal, spec),
+      bScore = get_bScore(Braak, spec),
+      # Add study name
+      study = study_name
+    )
+
+  # Put harmonized fields first in the data frame
+  metadata <- metadata |>
+    select(all_of(expectedColumns), !all_of(expectedColumns))
+
+  return(metadata)
+}
+
 # Harmonize Diverse Cohorts metadata
 #
 # Makes minor edits to the Diverse Cohorts individual metadata file, which was
@@ -15,8 +81,6 @@
 #   * Change `PMI` to a numeric column
 #   * Rename `isHispanic` values from ["TRUE", "FALSE"] to ["True", "False"]
 #   * Rename `race` value "Black" to "Black or African American"
-#   * Fixes some `amyA` values that don't match their `amyThal` values
-#   * Add `apoeStatus` and `study` column
 #
 # NOTE: There are 8 individuals in v20 of the data with incorrect `amyCerad`
 # values, which are corrected manually here based on comparison with ROSMAP
@@ -41,30 +105,19 @@ harmonize_Diverse_Cohorts <- function(metadata, spec) {
   metadata |>
     dplyr::mutate(
       ageDeath = censor_ages(ageDeath, spec),
-      PMI = case_match(PMI,
-        spec$missing ~ NA,
-        .default = suppressWarnings(as.numeric(PMI))
-      ),
+      PMI = ifelse(PMI == spec$missing, NA,
+                   suppressWarnings(as.numeric(PMI))),
       isHispanic = case_match(isHispanic,
         "TRUE" ~ spec$isHispanic$hisp_true,
         "FALSE" ~ spec$isHispanic$hisp_false,
         .default = isHispanic
       ),
-      race = case_match(race,
-        "Black" ~ spec$race$Black,
-        .default = race
-      ),
-      apoe4Status = get_apoe4Status(apoeGenotype, spec),
-      amyA = get_amyA(amyThal, spec),
+      race = ifelse(race == "Black", spec$race$Black, race),
       ## Manual corrections
-      amyCerad = case_when(
-        individualID %in% cerad_fix_ids ~ spec$amyCerad$frequent,
-        .default = amyCerad
-      ),
+      amyCerad = ifelse(individualID %in% cerad_fix_ids,
+                        spec$amyCerad$frequent,
+                        amyCerad)
       ##
-      # Update based on manual corrections
-      amyAny = get_amyAny(amyCerad, spec),
-      study = spec$study$diverse_cohorts
     )
 }
 
@@ -88,11 +141,7 @@ harmonize_Diverse_Cohorts <- function(metadata, spec) {
 #       `amyThal` numerical values
 #   * Convert `Braak` value "0" with "None", and convert other numerical `Braak`
 #       values to "Stage " + a Roman numeral
-#   * Add `apoeStatus`, `amyA`, `amyAny`, and `bScore` columns
-#   * Replace NA values in the `isHispanic`, `race`, `sex`, `apoeGenotype`,
-#       `amyCerad`, `amyThal`, and `Braak` columns with "missing or unknown"
-#   * Add columns `dataContributionGroup` = "Mayo", `cohort` = "Mayo Clinic",
-#     and `study` = "MayoRNAseq"
+#   * Add columns `dataContributionGroup` = "Mayo" and `cohort` = "Mayo Clinic"
 #
 # NOTE: There is one individual with an incorrect `race` value, which is
 # corrected manually here based on updated information from Diverse Cohorts.
@@ -117,46 +166,22 @@ harmonize_MayoRNAseq <- function(metadata, spec) {
     ) |>
     mutate(
       ageDeath = censor_ages(ageDeath, spec),
-      isHispanic = case_match(isHispanic,
-        "Caucasian" ~ spec$isHispanic$hisp_false,
-        NA ~ spec$missing,
-        .default = isHispanic
-      ),
-      race = case_match(race,
-        NA ~ spec$missing,
-        .default = race
-      ),
+      isHispanic = ifelse(isHispanic == "Caucasian",
+                          spec$isHispanic$hisp_false,
+                          isHispanic),
       ## Manual correction
-      race = case_when(
-        individualID == "11387" ~ spec$race$other,
-        .default = race
-      ),
+      race = ifelse(individualID == "11387", spec$race$other, race),
       ##
-      sex = case_match(sex,
-        NA ~ spec$missing,
-        .default = sex
-      ),
-      apoeGenotype = case_match(apoeGenotype,
-        NA ~ spec$missing,
-        .default = as.character(apoeGenotype)
-      ),
-      apoe4Status = get_apoe4Status(apoeGenotype, spec),
-      amyCerad = case_match(amyCerad,
-        NA ~ spec$missing, # All values are NA in v7
-        .default = amyCerad
-      ),
-      amyAny = get_amyAny(amyCerad, spec),
+      # Note: all amyCerad values are NA in this data set and will get filled
+      # in with "missing or unknown" in the main harmonize() function
       amyThal = case_match(amyThal,
         NA ~ spec$missing,
         0 ~ spec$amyThal$none,
         .default = paste("Phase", amyThal)
       ),
-      amyA = get_amyA(amyThal, spec),
       Braak = to_Braak_stage(floor(Braak), spec),
-      bScore = get_bScore(Braak, spec),
       cohort = spec$cohort$mayo,
       dataContributionGroup = spec$dataContributionGroup$mayo,
-      study = spec$study$mayo
     )
 }
 
@@ -176,9 +201,6 @@ harmonize_MayoRNAseq <- function(metadata, spec) {
 #     * `individualIdSource` => `dataContributionGroup`
 #   * Convert `PMI` from minutes to hours
 #   * Change `isHispanic` and `race` values to conform to the data dictionary
-#   * Change `NA` values in the `isHispanic`, `race`, `apoeGenotype`,
-#       `amyCerad`, and `Braak` columns to "missing or unknown"
-#   * Add `apoe4Status`, `amyAny`, `amyA`, and `bScore` columns
 #   * Add `cohort` = "Mt Sinai Brain Bank" and `study` = "MSBB"
 #
 # Arguments:
@@ -202,14 +224,12 @@ harmonize_MSBB <- function(metadata, spec) {
     mutate(
       PMI = PMI / 60, # PMI is in minutes
       isHispanic = case_match(isHispanic,
-        NA ~ spec$missing,
         c("A", "B", "W") ~ spec$isHispanic$hisp_false,
         "H" ~ spec$isHispanic$hisp_true,
         "U" ~ spec$missing,
         .default = isHispanic
       ),
       race = case_match(race,
-        NA ~ spec$missing,
         "A" ~ spec$race$Asian,
         "B" ~ spec$race$Black,
         "H" ~ spec$race$other,
@@ -217,26 +237,16 @@ harmonize_MSBB <- function(metadata, spec) {
         "U" ~ spec$missing,
         .default = race
       ),
-      apoeGenotype = case_match(apoeGenotype,
-        NA ~ spec$missing,
-        .default = as.character(apoeGenotype)
-      ),
-      apoe4Status = get_apoe4Status(apoeGenotype, spec),
       amyCerad = case_match(amyCerad,
-        NA ~ spec$missing,
         1 ~ spec$amyCerad$none,
         2 ~ spec$amyCerad$frequent,
         3 ~ spec$amyCerad$moderate,
         4 ~ spec$amyCerad$sparse,
         .default = as.character(amyCerad)
       ),
-      amyAny = get_amyAny(amyCerad, spec),
       amyThal = spec$missing,
-      amyA = get_amyA(amyThal, spec),
       Braak = to_Braak_stage(floor(Braak), spec),
-      bScore = get_bScore(Braak, spec),
-      cohort = spec$cohort$msbb,
-      study = spec$study$msbb
+      cohort = spec$cohort$msbb
     )
 }
 
@@ -262,13 +272,11 @@ harmonize_MSBB_corrections <- function(metadata, spec) {
       sex = tolower(sex),
       race = str_replace(race, " \\(nonHispanic\\)", ""),
       isHispanic = case_match(race,
-        NA ~ spec$missing,
         c("Asian", "Black", "White", "Other") ~ spec$isHispanic$hisp_false,
         "Hispanic" ~ spec$isHispanic$hisp_true,
         .default = race
       ),
       race = case_match(race,
-        NA ~ spec$missing,
         "Asian" ~ spec$race$Asian,
         "Black" ~ spec$race$Black,
         "Hispanic" ~ spec$race$other,
@@ -277,28 +285,19 @@ harmonize_MSBB_corrections <- function(metadata, spec) {
         .default = race
       ),
       ## Manual change as noted above
-      race = case_when(
-        individualID == "6160" ~ "White",
-        .default = race
-      ),
+      race = ifelse(individualID == "6160", "White", race),
       ##
       apoeGenotype = str_replace(apoeGenotype, "/", ""),
-      apoe4Status = get_apoe4Status(apoeGenotype, spec),
       amyCerad = case_match(amyCerad,
-        NA ~ spec$missing,
         0 ~ spec$amyCerad$none,
         1 ~ spec$amyCerad$sparse,
         2 ~ spec$amyCerad$moderate,
         3 ~ spec$amyCerad$frequent,
         .default = as.character(amyCerad)
       ),
-      amyAny = get_amyAny(amyCerad, spec),
       amyThal = spec$missing,
-      amyA = get_amyA(amyThal, spec),
       Braak = to_Braak_stage(Braak, spec),
-      bScore = get_bScore(Braak, spec),
       cohort = spec$cohort$msbb,
-      study = "MSBB_corrections",
       dataContributionGroup = spec$dataContributionGroup$mssm
     )
 }
@@ -322,8 +321,6 @@ harmonize_MSBB_corrections <- function(metadata, spec) {
 #     * `braaksc` => `Braak`
 #     * `Study` => `cohort`
 #   * Convert `ageDeath` empty string values to `NA`
-#   * Convert `NA` values in the `sex`, `isHispanic`, `race`, `apoeGenotype`,
-#       `Braak`, and `amyCerad` columns to "missing or unknown"
 #   * Convert `sex` values [0, 1] to ["female", "male"]
 #   * Convert `race` numerical values to values in data dictionary
 #     * NOTE: "Hawaiian / Pacific Islanders" are categorized as "other" for this
@@ -332,8 +329,6 @@ harmonize_MSBB_corrections <- function(metadata, spec) {
 #   * Convert `isHispanic` values [1, 2] to ["True", "False"]
 #   * Convert `Braak` numerical values to "None" or "Stage " + Roman numeral
 #   * Convert `amyCerad` numerical values to values in data dictionary
-#   * Add `apoe4status`, `bScore`, `amyA`, and `amyAny` columns
-#   * Add `amyThal` and `amyA` columns with all "missing or unknown" values
 #   * Add `dataContributionGroup` = "Rush" and `study` = "ROSMAP"
 #
 # NOTE: There is one individual with an incorrect value for `isHispanic`, which
@@ -365,7 +360,6 @@ harmonize_ROSMAP <- function(metadata, spec) {
       sex = case_match(sex,
         1 ~ spec$sex$male,
         0 ~ spec$sex$female,
-        NA ~ spec$missing,
         .default = as.character(sex)
       ),
       ageDeath = censor_ages(ageDeath, spec),
@@ -377,40 +371,28 @@ harmonize_ROSMAP <- function(metadata, spec) {
         5 ~ spec$race$Asian,
         6 ~ spec$race$other,
         7 ~ spec$missing,
-        NA ~ spec$missing,
         .default = as.character(race)
       ),
       isHispanic = case_match(isHispanic,
         1 ~ spec$isHispanic$hisp_true,
         2 ~ spec$isHispanic$hisp_false,
-        NA ~ spec$missing,
         .default = as.character(isHispanic)
       ),
       # manual correction
-      isHispanic = case_when(
-        individualID == "R8412417" ~ spec$isHispanic$hisp_false,
-        .default = isHispanic
-      ),
-      apoeGenotype = case_match(apoeGenotype,
-        NA ~ spec$missing,
-        .default = as.character(apoeGenotype)
-      ),
-      apoe4Status = get_apoe4Status(apoeGenotype, spec),
+      isHispanic = ifelse(individualID == "R8412417",
+                          spec$isHispanic$hisp_false,
+                          isHispanic),
+      apoeGenotype = ifelse(is.na(apoeGenotype), spec$missing,
+                            as.character(apoeGenotype)),
       Braak = to_Braak_stage(Braak, spec),
-      bScore = get_bScore(Braak, spec),
       amyCerad = case_match(amyCerad,
-        NA ~ spec$missing,
         1 ~ spec$amyCerad$frequent,
         2 ~ spec$amyCerad$moderate,
         3 ~ spec$amyCerad$sparse,
         4 ~ spec$amyCerad$none,
         .default = as.character(amyCerad)
       ),
-      amyAny = get_amyAny(amyCerad, spec),
-      amyThal = spec$missing,
-      amyA = spec$missing,
       dataContributionGroup = spec$dataContributionGroup$rush,
-      study = spec$study$rosmap
     )
 }
 
@@ -570,13 +552,9 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
 #   * Convert `isHispanic` values to "True" or "False"
 #   * Convert Braak numerical values to Roman numerals
 #   * Convert `amyCerad` numerical values to values in data dictionary
-#   * Convert `NA` values to "missing or unknown" in the `race`, `isHispanic`,
-#     `apoeGenotype`, `Braak`, and `amyCerad` columns
-#   * Add `apoe4Status`, `amyAny`, `amyThal`, `amyA`, and `bScore` columns
 #   * Fix `cohort` values to match data dictionary
 #   * Add the `dataContributionGroup` column with values appropriate to each
 #     cohort.
-#   * Add `study` = "NPS-AD"
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -605,65 +583,43 @@ harmonize_NPS_AD <- function(metadata, neuropath, spec) {
       amyCerad = CERAD,
       Braak = BRAAK_AD
     ) |>
-    # Move amyCerad from the second column to near the other pathology
-    dplyr::relocate(amyCerad, .before = Braak) |>
     mutate(
       # Fix to allow comparison to Diverse Cohorts
-      diverseCohortsIndividualIDFormat = case_match(diverseCohortsIndividualIDFormat,
+      diverseCohortsIndividualIDFormat = case_match(
+        diverseCohortsIndividualIDFormat,
         29637 ~ "29637_MSSM",
         29582 ~ "29582_MSSM",
         .default = as.character(diverseCohortsIndividualIDFormat)
       ),
       ## Manual corrections
-      ageDeath = case_match(ageDeath,
-        # Setting these to NA will force these values to be filled in by Diverse
-        # Cohorts / AMP-AD 1.0 data during de-duplication
-        "89+" ~ NA,
-        .default = ageDeath),
+      # Setting these to NA will force these values to be filled in by Diverse
+      # Cohorts / AMP-AD 1.0 data during de-duplication
+      ageDeath = ifelse(ageDeath == "89+", NA, ageDeath),
       ##
       PMI = PMI / 60,
       pmiUnits = "hours",
-      race = case_match(race,
-        NA ~ spec$missing,
-        .default = race
-      ),
       isHispanic = case_match(isHispanic,
         "Hispanic or Latino" ~ spec$isHispanic$hisp_true,
         "Not Hispanic or Latino" ~ spec$isHispanic$hisp_false,
-        NA ~ spec$missing,
         .default = isHispanic
       ),
-      apoeGenotype = case_match(apoeGenotype,
-        NA ~ spec$missing,
-        .default = as.character(apoeGenotype)
-      ),
-      apoe4Status = get_apoe4Status(apoeGenotype, spec),
       # Cerad mapping per NPS-AD data dictionary (syn57373364)
       amyCerad = case_match(amyCerad,
         1 ~ spec$amyCerad$none,
         2 ~ spec$amyCerad$sparse,
         3 ~ spec$amyCerad$moderate,
         4 ~ spec$amyCerad$frequent,
-        NA ~ spec$missing,
         .default = as.character(amyCerad)
       ),
-      amyAny = get_amyAny(amyCerad, spec),
-      amyThal = spec$missing,
-      amyA = spec$missing,
       Braak = to_Braak_stage(Braak, spec),
-      bScore = get_bScore(Braak, spec),
-      cohort = case_match(cohort,
-        "MSBB" ~ spec$cohort$msbb,
-        .default = cohort
-      ),
+      cohort = ifelse(cohort == "MSBB", spec$cohort$msbb, cohort),
       dataContributionGroup = case_match(cohort,
         spec$cohort$msbb ~ spec$dataContributionGroup$mssm,
         spec$cohort$hbcc ~ spec$dataContributionGroup$nimh,
         c(spec$cohort$ros, spec$cohort$map) ~ spec$dataContributionGroup$rush,
         "ROSMAP" ~ spec$dataContributionGroup$rush,
         .default = ""
-      ),
-      study = spec$study$nps_ad
+      )
     )
 }
 
@@ -1073,26 +1029,26 @@ harmonize_BD2 <- function(metadata, harmonized_baseline, spec) {
 # Harmonize AMP-PD / GEN-A3 metadata
 #
 # Modifies the AMP-PD donor metadata file to conform to the GENESIS data
-# dictionary. Source metadata file: local download provided by Jaroslav Bendl on
-# Aug 18, 2025.
+# dictionary. Source metadata files: local download provided by Jaroslav Bendl
+# on Aug 18, 2025 and the AMP-PD portal clinical Demographics.csv file (version
+# 2023_v4release_1027).
 #
-# Modifications needed for version Aug 18, 2025:
+# Modifications needed for version Aug 18, 2025 / 2023_v4release_1027:
 #   * Rename columns:
 #     * `participant_id` => `individualID`
 #     * `Info.Institution` => `dataContributionGroup`
 #     * `Demographics.age_at_baseline` => `ageDeath`
 #     * `Demographics.sex` => `sex`
-#     * `Demographics.ethnicity` => `race`
+#     * `ethnicity` => `isHispanic`
+#     * `Demographics.ethnicity` => geneticAncestry`
 #     * `PMI.PMI_hours` => `PMI`
 #     * `LBD_Cohort_Path_Data.path_braak_nft` => `Braak`
 #     * `LBD_Cohort_Path_Data.path_cerad` => `amyCerad`
 #   * Update `race` values to conform to the data dictionary
 #   * Change `sex` values to all lower case
-#   * Samples with `race` = "AMR" changed to `race` = "missing or unknown",
-#     `isHispanic` = "True"
 #   * Add missing columns `apoeGenotype`, `apoe4Status`, `amyAny`, `amyThal`,
 #     `amyA`, `bScore`
-#   * Add a `cohort` column ??
+#   * Add a `cohort` column based on dataContributionGroup values
 #   * Change `dataContributionGroup` values to conform to data dictionary
 #   * Add `study` = "AMP-PD"
 #
@@ -1113,33 +1069,37 @@ harmonize_AMP_PD <- function(metadata, spec) {
       dataContributionGroup = Info.Institution,
       ageDeath = Demographics.age_at_baseline,
       sex = Demographics.sex,
-      race = Demographics.ethnicity, # TODO update when given access to Terra
+      isHispanic = ethnicity,
+      geneticAncestry = Demographics.ethnicity,
       PMI = PMI.PMI_hours,
       Braak = LBD_Cohort_Path_Data.path_braak_nft,
       amyCerad = LBD_Cohort_Path_Data.path_cerad
     ) |>
     dplyr::mutate(
       ageDeath = censor_ages(ageDeath, spec),
-      isHispanic = case_match( # TODO update when given access to Terra
-        race,
-        "AMR" ~ spec$isHispanic$hisp_true,
-        NA ~ spec$missing,
-        .default = spec$isHispanic$hisp_false
+      isHispanic = case_match(
+        isHispanic,
+        "Unknown" ~ spec$missing,
+        "Hispanic or Latino" ~ spec$isHispanic$hisp_true,
+        "Not Hispanic or Latino" ~ spec$isHispanic$hisp_false,
+        .default = isHispanic
       ),
-      race = case_match( # TODO update when given access to Terra
-        race,
-        "AFR" ~ spec$race$Black,
-        "EUR" ~ spec$race$White,
-        "SAS" ~ spec$race$Asian,
-        c(NA, "AMR") ~ spec$missing,
-        .default = race
-      ),
+      race = ifelse(race == "Unknown", spec$missing, race),
       sex = tolower(sex),
       Braak = to_Braak_stage(Braak, spec),
       amyCerad = ifelse(is.na(amyCerad), spec$missing, amyCerad),
       bScore = get_bScore(Braak, spec),
       amyAny = get_amyAny(amyCerad, spec),
-      cohort = "??", # TODO
+      # For lack of better information, cohort and dataContributionGroup are
+      # effectively the same
+      cohort = case_match(
+        dataContributionGroup,
+        "HA" ~ spec$cohort$harvard,
+        "MS" ~ spec$cohort$msbb,
+        "UD" ~ spec$cohort$udall,
+        "UM" ~ spec$cohort$umiami,
+        .default = dataContributionGroup
+      ),
       dataContributionGroup = case_match(
         dataContributionGroup,
         "HA" ~ spec$dataContributionGroup$harvard,
