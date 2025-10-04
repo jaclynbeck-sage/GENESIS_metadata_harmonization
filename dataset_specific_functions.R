@@ -8,7 +8,26 @@
 #
 # Runs the appropriate dataset-specific function to rename and harmonize
 # variables, fills in any NA values with "missing or unknown", and adds any
-# missing columns to the data frame.
+# missing columns to the data frame. It also de-duplicates studies that need it
+# with AMP-AD 1.0 / Diverse Cohorts data.
+#
+# Arguments:
+#   study_name - the name of the study
+#   metadata - a `data.frame` of metadata from the source metadata file. Columns
+#     are variables and rows are individuals.
+#   spec - a `config` object describing the standardized values for each field,
+#     as defined by this project's `GENESIS_harmonization.yml` file
+#   harmonized_baseline - a `data.frame` of de-duplicated and harmonized
+#     metadata from all AMP-AD 1.0 studies and Diverse Cohorts. If the study
+#     does not need de-duplication, this should be NULL.
+#   extra_metadata - a `data.frame` of extra metadata that is needed by several
+#     studies, which has different information depending on study. If the study
+#     does not need extra metadata, this should be NULL.
+#
+# Returns:
+#   a `data.frame` with all relevant fields harmonized to the GENESIS data
+#   dictionary. Columns not defined in the data dictionary are left as-is.
+#
 harmonize <- function(study_name, metadata, spec, harmonized_baseline = NULL,
                       extra_metadata = NULL) {
   # Study-specific harmonization
@@ -16,11 +35,11 @@ harmonize <- function(study_name, metadata, spec, harmonized_baseline = NULL,
     study_name,
     "AMP-PD" = harmonize_AMP_PD(metadata, spec),
     "ASAP" = harmonize_ASAP(metadata, spec),
-    "BD2" = harmonize_BD2(metadata, harmonized_baseline, spec),
+    "BD2" = harmonize_BD2(metadata, spec),
     "AMP-AD_DiverseCohorts" = harmonize_Diverse_Cohorts(metadata, spec),
     "MayoRNAseq" = harmonize_MayoRNAseq(metadata, spec),
-    "MC-BrAD" = harmonize_MC_BrAD(metadata, harmonized_baseline, spec),
-    "MC_snRNA" = harmonize_MC_snRNA(metadata, harmonized_baseline, spec),
+    "MC-BrAD" = harmonize_MC_BrAD(metadata, spec),
+    "MC_snRNA" = harmonize_MC_snRNA(metadata, spec),
     "MCMPS" = harmonize_MCMPS(metadata, spec),
     "MSBB" = harmonize_MSBB(metadata, spec),
     "NPS-AD" = harmonize_NPS_AD(metadata, extra_metadata, spec),
@@ -30,14 +49,6 @@ harmonize <- function(study_name, metadata, spec, harmonized_baseline = NULL,
     "MSBB_corrections" = harmonize_MSBB_corrections(metadata, spec), # TODO temporary
     .default = metadata
   )
-
-  # Helper function to fill in NA values with "missing or unknown" in all non-numeric fields
-  fillna <- function(column) {
-    if (!is.numeric(column)) {
-      column = ifelse(is.na(column), spec$missing, column)
-    }
-    return(column)
-  }
 
   # Add any missing fields
   missing_fields <- setdiff(expectedColumns, colnames(metadata))
@@ -53,7 +64,7 @@ harmonize <- function(study_name, metadata, spec, harmonized_baseline = NULL,
       # Fix fields that might be read in as numeric but should be characters
       across(any_of(cols_fill), as.character),
       # Fill NAs in character columns as "missing or unknown"
-      across(any_of(cols_fill), fillna),
+      across(any_of(cols_fill), ~ ifelse(is.na(.x), spec$missing, .x)),
       # Add or update derived columns
       apoe4Status = get_apoe4Status(apoeGenotype, spec),
       amyAny = get_amyAny(amyCerad, spec),
@@ -63,12 +74,31 @@ harmonize <- function(study_name, metadata, spec, harmonized_baseline = NULL,
       study = study_name
     )
 
+  # If applicable, pull missing information from AMP-AD 1.0 and Diverse Cohorts metadata
+  if (!is.null(harmonized_baseline)) {
+    metadata <- deduplicate_studies(
+      list(metadata, harmonized_baseline),
+      spec,
+      verbose = FALSE
+    ) |>
+      subset(study == study_name) |>
+      select(all_of(colnames(metadata)))
+
+    # Extra step for BD2, which had individualID modified to match AMP-AD 1.0 IDs
+    # in the BD2 harmonization function
+    if (study_name == spec$study$bd2) {
+      metadata$individualID <- metadata$bd2_id
+      metadata <- select(metadata, -bd2_id)
+    }
+  }
+
   # Put harmonized fields first in the data frame
   metadata <- metadata |>
     select(all_of(expectedColumns), !all_of(expectedColumns))
 
   return(metadata)
 }
+
 
 # Harmonize Diverse Cohorts metadata
 #
@@ -425,10 +455,6 @@ harmonize_ROSMAP <- function(metadata, spec) {
 #   * Convert `amyCerad` numerical values to values in data dictionary
 #   * Convert `Braak` numerical values to "None" or "Stage " + Roman numeral
 #   * Convert `amyThal` values from "Thal #" to "None" or "Phase #"
-#   * Convert `NA` values in the `isHispanic`, `race`, `apoeGenotype`, `Braak`,
-#       `amyThal`, and `amyCerad` columns to "missing or unknown"
-#   * Update `apoe4Status` column with values in data dictionary
-#   * Add `bScore`, `amyA`, and `amyAny` columns
 #   * Add `cohort` ("SEA-AD"), `dataContributionGroup` ("Allen Institute")
 #       and `study` ("SEA-AD")
 #   * Use Atherosclerosis values from the Allen metadata (even though these
@@ -481,40 +507,26 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
         "No" ~ spec$isHispanic$hisp_false,
         "Yes" ~ spec$isHispanic$hisp_true,
         "Unknown" ~ spec$missing,
-        NA ~ spec$missing,
         .default = isHispanic
       ),
       race = case_when(
         race == "Other" ~ spec$race$other,
         grepl("American Indian", race) ~ spec$race$Amer_Ind,
-        is.na(race) ~ spec$missing,
         .default = race
       ),
-      apoeGenotype = case_match(apoeGenotype,
-        NA ~ spec$missing,
-        .default = as.character(apoeGenotype)
-      ),
-      apoe4Status = get_apoe4Status(apoeGenotype, spec),
       amyCerad = case_match(amyCerad,
         0 ~ spec$amyCerad$none,
         1 ~ spec$amyCerad$sparse,
         2 ~ spec$amyCerad$moderate,
         3 ~ spec$amyCerad$frequent,
-        NA ~ spec$missing,
         .default = as.character(amyCerad)
       ),
-      amyAny = get_amyAny(amyCerad, spec),
-      amyThal = case_match(amyThal,
-        NA ~ spec$missing,
-        "Thal 0" ~ spec$amyThal$none,
-        .default = str_replace(amyThal, "Thal", "Phase")
-      ),
-      amyA = get_amyA(amyThal, spec),
+      amyThal = ifelse(amyThal == "Thal 0",
+                       spec$amyThal$none,
+                       str_replace(amyThal, "Thal", "Phase")),
       Braak = to_Braak_stage(Braak, spec),
-      bScore = get_bScore(Braak, spec),
       cohort = spec$cohort$sea_ad,
       dataContributionGroup = spec$dataContributionGroup$allen_institute,
-      study = spec$study$sea_ad
     )
 }
 
@@ -640,10 +652,8 @@ harmonize_NPS_AD <- function(metadata, neuropath, spec) {
 #   * Change `isHispanic` values from "European" to "False"
 #   * Convert Braak numerical values to Roman numerals
 #   * Convert `amyCerad` numerical values to values in data dictionary
-#   * Add `apoe4Status`, `amyAny`, `amyThal`, `amyA`, and `bScore` columns
 #   * Add a `cohort` column with either "SMRI" or "Banner"
 #   * Add a `dataContributionGroup` column with values for Stanley and Banner
-#   * Add `study` = "SMIB_AD"
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -666,29 +676,19 @@ harmonize_SMIB_AD <- function(metadata, spec) {
       ageDeath = censor_ages(ageDeath, spec),
       race = spec$race$White,
       isHispanic = spec$isHispanic$hisp_false,
-      apoeGenotype = as.character(apoeGenotype),
-      apoe4Status = get_apoe4Status(apoeGenotype, spec),
       Braak = to_Braak_stage(Braak, spec),
-      bScore = get_bScore(Braak, spec),
       amyCerad = case_match(amyCerad,
         1 ~ spec$amyCerad$none,
         2 ~ spec$amyCerad$sparse,
         4 ~ spec$amyCerad$frequent,
-        NA ~ spec$missing,
         .default = as.character(amyCerad)
       ),
-      amyAny = get_amyAny(amyCerad, spec),
-      amyThal = spec$missing,
-      amyA = spec$missing,
-      cohort = case_match(individualIdSource,
-        NA ~ spec$cohort$smri,
-        .default = spec$cohort$banner
-      ),
-      dataContributionGroup = case_match(cohort,
-        spec$cohort$smri ~ spec$dataContributionGroup$stanley,
-        .default = spec$dataContributionGroup$banner
-      ),
-      study = spec$study$smib_ad
+      cohort = ifelse(is.na(individualIdSource),
+                      spec$cohort$smri,
+                      spec$cohort$banner),
+      dataContributionGroup = ifelse(cohort == spec$cohort$smri,
+                                     spec$dataContributionGroup$stanley,
+                                     spec$dataContributionGroup$banner)
     )
 }
 
@@ -707,12 +707,8 @@ harmonize_SMIB_AD <- function(metadata, spec) {
 #     * `CERAD` => `amyCerad`
 #   * Trim extra spaces from `race` values
 #   * Trim extra spaces from `isHispanic` values and convert to True/False
-#   * Replace `NA` values with "missing or unknown" in the `apoeGenotype`,
-#     `amyCerad`, and `Braak` columns
-#   * Add `apoe4Status`, `amyAny`, `amyThal`, `amyA`, and `bScore` columns
 #   * Add a `cohort` column containing "Mayo Clinic"
 #   * Add a `dataContributionGroup` column containing "Mayo"
-#   * Add `study` = "MCMPS"
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -740,20 +736,8 @@ harmonize_MCMPS <- function(metadata, spec) {
         "Middle Eastern" ~ spec$isHispanic$hisp_false,
         .default = isHispanic
       ),
-      apoeGenotype = case_match(apoeGenotype,
-        NA ~ spec$missing,
-        .default = as.character(apoeGenotype)
-      ),
-      apoe4Status = get_apoe4Status(apoeGenotype, spec),
-      amyCerad = spec$missing,
-      amyAny = spec$missing,
-      amyThal = spec$missing,
-      amyA = spec$missing,
-      Braak = spec$missing,
-      bScore = spec$missing,
       cohort = spec$cohort$mayo,
-      dataContributionGroup = spec$dataContributionGroup$mayo,
-      study = spec$study$mcmps
+      dataContributionGroup = spec$dataContributionGroup$mayo
     )
 }
 
@@ -764,7 +748,7 @@ harmonize_MCMPS <- function(metadata, spec) {
 # dictionary. Source metadata file: syn31563038 (version 1) on Synapse. This
 # data set has some sample overlap with AMP-AD 1.0 Mayo metadata and Diverse
 # Cohorts metadata. There are some missing values in this data set that exist in
-# these data sets, so we pull those values in.
+# these data sets, so those get pulled in in the main harmonization function.
 #
 # Modifications needed for version 1:
 #   * Rename columns:
@@ -773,18 +757,13 @@ harmonize_MCMPS <- function(metadata, spec) {
 #     * `CERAD` => `amyCerad`
 #   * Change `ageDeath` values of "90_or_over" to "90+"
 #   * Change `isHispanic` values from "Caucasian" to "False"
-#   * Replace `NA` values with "missing or unknown" in the `amyCerad` column
 #   * Round numerical `Braak` values down and convert to Roman numerals
-#   * Add `apoe4Status`, `amyAny`, `amyThal`, `amyA`, and `bScore` columns
 #   * Add a `cohort` column containing "Mayo Clinic"
 #   * Add a `dataContributionGroup` column containing "Mayo"
-#   * Add `study` = "MC_snRNA
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
 #     are variables and rows are individuals.
-#   harmonized_baseline - a `data.frame` of de-duplicated and harmonized
-#     metadata from all AMP-AD 1.0 studies and Diverse Cohorts
 #   spec - a `config` object describing the standardized values for each field,
 #     as defined by this project's `GENESIS_harmonization.yml` file
 #
@@ -792,8 +771,8 @@ harmonize_MCMPS <- function(metadata, spec) {
 #   a `data.frame` with all relevant fields harmonized to the GENESIS data
 #   dictionary. Columns not defined in the data dictionary are left as-is.
 #
-harmonize_MC_snRNA <- function(metadata, harmonized_baseline, spec) {
-  meta_new <- metadata |>
+harmonize_MC_snRNA <- function(metadata, spec) {
+  metadata |>
     rename(
       PMI = pmi,
       isHispanic = ethnicity,
@@ -802,32 +781,10 @@ harmonize_MC_snRNA <- function(metadata, harmonized_baseline, spec) {
     mutate(
       ageDeath = censor_ages(ageDeath, spec),
       isHispanic = spec$isHispanic$hisp_false,
-      apoeGenotype = as.character(apoeGenotype),
-      apoe4Status = get_apoe4Status(apoeGenotype, spec),
-      amyCerad = spec$missing,
-      amyAny = spec$missing,
-      amyThal = spec$missing,
-      amyA = spec$missing,
       Braak = to_Braak_stage(floor(Braak), spec),
-      bScore = get_bScore(Braak, spec),
       dataContributionGroup = spec$dataContributionGroup$mayo,
-      cohort = spec$cohort$mayo,
-      study = spec$study$mc_snrna
+      cohort = spec$cohort$mayo
     )
-
-  # Pull missing information from AMP-AD 1.0 and Diverse Cohorts metadata
-  meta_new <- meta_new |>
-    mutate(source = "GEN-A11")
-
-  meta_new <- deduplicate_studies(
-    list(meta_new, harmonized_baseline),
-    spec,
-    verbose = FALSE
-  ) |>
-    subset(source == "GEN-A11") |>
-    select(all_of(colnames(meta_new)), -source)
-
-  return(meta_new)
 }
 
 
@@ -837,7 +794,7 @@ harmonize_MC_snRNA <- function(metadata, harmonized_baseline, spec) {
 # dictionary. Source metadata file: syn51401700 (version 2) on Synapse. This
 # data set has some sample overlap with AMP-AD 1.0 Mayo metadata and Diverse
 # Cohorts metadata. There are some missing values in this data set that exist in
-# these data sets, so we pull those values in.
+# these data sets, so those get pulled in in the main harmonization function.
 #
 # Modifications needed for version 2:
 #   * Rename columns:
@@ -846,20 +803,14 @@ harmonize_MC_snRNA <- function(metadata, harmonized_baseline, spec) {
 #     * `CERAD` => `amyCerad`
 #     * `Thal` => `amyThal`
 #   * Change `ageDeath` values of "90_or_over" to "90+"
-#   * Replace `NA` values with "missing or unknown" in the `isHispanic`,
-#   * `apoeGenotype`, `amyCerad`, and `amyThal` columns
 #   * Round numerical `Braak` values down and convert to Roman numerals
 #   * Convert `amyThal` values to conform to data dictionary
-#   * Add `apoe4Status`, `amyAny`, `amyA`, and `bScore` columns
 #   * Add a `cohort` column containing "Mayo Clinic"
 #   * Add a `dataContributionGroup` column containing "Mayo"
-#   * Add `study` = "MC-BrAD"
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
 #     are variables and rows are individuals.
-#   harmonized_baseline - a `data.frame` of de-duplicated and harmonized
-#     metadata from all AMP-AD 1.0 studies and Diverse Cohorts
 #   spec - a `config` object describing the standardized values for each field,
 #     as defined by this project's `GENESIS_harmonization.yml` file
 #
@@ -867,8 +818,8 @@ harmonize_MC_snRNA <- function(metadata, harmonized_baseline, spec) {
 #   a `data.frame` with all relevant fields harmonized to the GENESIS data
 #   dictionary. Columns not defined in the data dictionary are left as-is.
 #
-harmonize_MC_BrAD <- function(metadata, harmonized_baseline, spec) {
-  meta_new <- metadata |>
+harmonize_MC_BrAD <- function(metadata, spec) {
+  metadata |>
     rename(
       PMI = pmi,
       isHispanic = ethnicity,
@@ -877,38 +828,15 @@ harmonize_MC_BrAD <- function(metadata, harmonized_baseline, spec) {
     ) |>
     mutate(
       ageDeath = censor_ages(ageDeath, spec),
-      isHispanic = spec$missing,
-      apoeGenotype = case_match(apoeGenotype,
-        NA ~ spec$missing,
-        .default = as.character(apoeGenotype)
-      ),
-      apoe4Status = get_apoe4Status(apoeGenotype, spec),
-      amyCerad = spec$missing,
-      amyAny = spec$missing,
       amyThal = case_match(amyThal,
         0 ~ spec$amyThal$none,
         1 ~ spec$amyThal$phase1,
-        NA ~ spec$missing,
         .default = as.character(amyThal)
       ),
-      amyA = get_amyA(amyThal, spec),
       Braak = to_Braak_stage(floor(Braak), spec),
-      bScore = get_bScore(Braak, spec),
       dataContributionGroup = spec$dataContributionGroup$mayo,
       cohort = spec$cohort$mayo,
-      study = spec$study$mc_brad
     )
-
-  # Pull missing information from AMP-AD 1.0 and Diverse Cohorts metadata
-  meta_new <- deduplicate_studies(
-    list(meta_new, harmonized_baseline),
-    spec,
-    verbose = FALSE
-  ) |>
-    subset(study == spec$study$mc_brad) |>
-    select(all_of(colnames(meta_new)))
-
-  return(meta_new)
 }
 
 
@@ -917,8 +845,8 @@ harmonize_MC_BrAD <- function(metadata, harmonized_baseline, spec) {
 # Modifies the BD2 donor metadata file to conform to the GENESIS data
 # dictionary. There are 14 samples that overlap with Diverse Cohorts/AMP-AD 1.0,
 # so missing Braak/amyCerad/amyThal values for those samples are filled in from
-# that data. Source metadata file: local download provided by Jaroslav Bendl on
-# July 16, 2025.
+# that data in the main harmonization function. Source metadata file: local
+# download provided by Jaroslav Bendl on July 16, 2025.
 #
 # Modifications needed for version July 16, 2025:
 #   * Rename columns:
@@ -931,17 +859,12 @@ harmonize_MC_BrAD <- function(metadata, harmonized_baseline, spec) {
 #   * Change `sex` values to all lower case
 #   * Samples with `race` = "Hispanic" changed to `race` = "Other",
 #     `isHispanic` = "True"
-#   * Add missing columns `apoeGenotype`, `apoe4Status`, `amyCerad`, `amyAny`,
-#     `amyThal`, `amyA`, `Braak`, `bScore`
 #   * Add a `cohort` column with either "Mt Sinai Brain Bank" or "UPitt"
 #   * Change `dataContributionGroup` "UPitt" to "University of Pittsburgh"
-#   * Add `study` = "BD2"
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
 #     are variables and rows are individuals.
-#   harmonized_baseline - a `data.frame` of de-duplicated and harmonized
-#     metadata from all AMP-AD 1.0 studies and Diverse Cohorts
 #   spec - a `config` object describing the standardized values for each field,
 #     as defined by this project's `GENESIS_harmonization.yml` file
 #
@@ -949,7 +872,7 @@ harmonize_MC_BrAD <- function(metadata, harmonized_baseline, spec) {
 #   a `data.frame` with all relevant fields harmonized to the GENESIS data
 #   dictionary. Columns not defined in the data dictionary are left as-is.
 #
-harmonize_BD2 <- function(metadata, harmonized_baseline, spec) {
+harmonize_BD2 <- function(metadata, spec) {
   meta_new <- metadata |>
     dplyr::rename(
       individualID = SubNum,
@@ -961,17 +884,13 @@ harmonize_BD2 <- function(metadata, harmonized_baseline, spec) {
     dplyr::mutate(
       # Shouldn't need censoring but just in case
       ageDeath = censor_ages(ageDeath, spec),
-      isHispanic = case_match(
-        race,
-        "Hispanic" ~ spec$isHispanic$hisp_true,
-        NA ~ spec$missing,
-        .default = spec$isHispanic$hisp_false
-      ),
+      isHispanic = ifelse(race == "Hispanic",
+                          spec$isHispanic$hisp_true,
+                          spec$isHispanic$hisp_false),
       race = case_match(
         race,
         "Black" ~ spec$race$Black,
         "Hispanic" ~ spec$race$other,
-        NA ~ spec$missing,
         .default = race
       ),
       sex = tolower(sex),
@@ -986,23 +905,10 @@ harmonize_BD2 <- function(metadata, harmonized_baseline, spec) {
         "MSSM" ~ spec$dataContributionGroup$mssm,
         "UPitt" ~ spec$dataContributionGroup$upitt,
         .default = dataContributionGroup
-      ),
-      # These are all missing
-      apoeGenotype = spec$missing,
-      amyCerad = spec$missing,
-      Braak = spec$missing,
-      amyThal = spec$missing,
-      apoe4Status = spec$missing,
-      amyAny = spec$missing,
-      amyA = spec$missing,
-      bScore = spec$missing,
-
-      study = spec$study$bd2
+      )
     )
 
-  # Pull missing information from AMP-AD 1.0 and Diverse Cohorts metadata.
-  # Overlapping samples are identified in the Synapse_GENESIS and Synapse_MSSM
-  # columns.
+  # Modification for de-duplication in the main harmonization function
   meta_new <- meta_new |>
     mutate(
       bd2_id = individualID,
@@ -1012,15 +918,6 @@ harmonize_BD2 <- function(metadata, harmonized_baseline, spec) {
         .default = as.character(individualID)
       )
     )
-
-  meta_new <- deduplicate_studies(
-    list(meta_new, harmonized_baseline),
-    spec,
-    verbose = FALSE
-  ) |>
-    subset(study == spec$study$bd2) |>
-    mutate(individualID = bd2_id) |>
-    select(all_of(colnames(meta_new)), -bd2_id)
 
   return(meta_new)
 }
@@ -1046,11 +943,8 @@ harmonize_BD2 <- function(metadata, harmonized_baseline, spec) {
 #     * `LBD_Cohort_Path_Data.path_cerad` => `amyCerad`
 #   * Update `race` values to conform to the data dictionary
 #   * Change `sex` values to all lower case
-#   * Add missing columns `apoeGenotype`, `apoe4Status`, `amyAny`, `amyThal`,
-#     `amyA`, `bScore`
 #   * Add a `cohort` column based on dataContributionGroup values
 #   * Change `dataContributionGroup` values to conform to data dictionary
-#   * Add `study` = "AMP-PD"
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -1087,9 +981,6 @@ harmonize_AMP_PD <- function(metadata, spec) {
       race = ifelse(race == "Unknown", spec$missing, race),
       sex = tolower(sex),
       Braak = to_Braak_stage(Braak, spec),
-      amyCerad = ifelse(is.na(amyCerad), spec$missing, amyCerad),
-      bScore = get_bScore(Braak, spec),
-      amyAny = get_amyAny(amyCerad, spec),
       # For lack of better information, cohort and dataContributionGroup are
       # effectively the same
       cohort = case_match(
@@ -1107,14 +998,7 @@ harmonize_AMP_PD <- function(metadata, spec) {
         "UD" ~ spec$dataContributionGroup$udall,
         "UM" ~ spec$dataContributionGroup$umiami,
         .default = dataContributionGroup
-      ),
-      # These are all missing
-      apoeGenotype = spec$missing,
-      amyThal = spec$missing,
-      apoe4Status = spec$missing,
-      amyA = spec$missing,
-
-      study = spec$study$amp_pd
+      )
     )
 }
 
@@ -1145,15 +1029,12 @@ harmonize_AMP_PD <- function(metadata, spec) {
 #     of individualID due to its ubiquitous use in other ASAP metadata files.
 #     Leaving the column named as-is makes it easier to merge with other files.
 #   * Censor ages over 90
-#   * Set empty string ("") values in the `race`, `isHispanic`, `Braak`,
-#     `amyCerad`, and `amyThal` columns to "missing or unknown"
+#   * Set empty string ("") values in harmonized columns to NA so deduplication works
 #   * Change `sex` values to all lower case
 #   * Change `isHispanic` "Not Reported" values to "missing or unknown"
 #   * Update `Braak`, `amyCerad`, `amyThal`, and `cohort` values to conform to
 #     the data dictionary.
 #   * Add `dataContributionGroup` values based on the `asap_team_id` values.
-#   * Add missing columns `bScore`, `amyAny`, `amyA`, `apoe4Status`
-#   * Add `study` = "ASAP"
 #   * Deduplicate rows with the same individual, which are identical except for
 #     some columns where one row is missing a value and one has the value, or
 #     where two different groups typed slightly different values for the same
@@ -1168,6 +1049,7 @@ harmonize_AMP_PD <- function(metadata, spec) {
 # Returns:
 #   a `data.frame` with all relevant fields harmonized to the GENESIS data
 #   dictionary. Columns not defined in the data dictionary are left as-is.
+#
 harmonize_ASAP <- function(metadata, spec) {
   meta_new <- metadata |>
     dplyr::rename(
@@ -1181,52 +1063,40 @@ harmonize_ASAP <- function(metadata, spec) {
       cohort = biobank_name
     ) |>
     mutate(
+      # This data set uses "" instead of NA, need to set to NA for some
+      # harmonization functions to work
+      across(any_of(expectedColumns), ~ ifelse(.x == "", NA, .x)),
       # Keep the field named "asap_subject_id" but add individualID column
       individualID = asap_subject_id,
       ageDeath = censor_ages(ageDeath, spec),
       sex = tolower(sex),
-      # All filled-in values in the race column are already correct
-      race = case_match(
-        race,
-        "" ~ spec$missing,
-        .default = race
-      ),
       # There aren't any non-missing or non "Not Reported" values
-      isHispanic = case_match(
-        isHispanic,
-        c("", "Not Reported") ~ spec$missing,
-        .default = isHispanic
-      ),
-      # Braak is already in Roman numerals except for "0" and ""
+      isHispanic = ifelse(isHispanic == "Not Reported",
+                          spec$missing,
+                          isHispanic),
+      # Braak is already in Roman numerals except for "0" and ""/NA
       Braak = case_match(
         Braak,
-        "" ~ spec$missing,
+        NA ~ spec$missing,
         "0" ~ spec$Braak$none,
         .default = paste("Stage", Braak)
       ),
-      bScore = get_bScore(Braak, spec),
       # It's unclear whether missing values mean "None" or "missing" so they
-      # have been set to "missing".
+      # have been left as NA so they are set to "missing".
       amyCerad = case_match(
         amyCerad,
-        "" ~ spec$missing,
         "Sparse" ~ spec$amyCerad$sparse,
         "Moderate" ~ spec$amyCerad$moderate,
         "Frequent" ~ spec$amyCerad$frequent,
         .default = amyCerad
       ),
-      amyAny = get_amyAny(amyCerad, spec),
       amyThal = case_match(
         amyThal,
-        "" ~ spec$missing,
-        "4/5" ~ spec$amyThal$phase5, # Round up to phase 5
+        NA ~ spec$missing,
+        "4/5" ~ spec$amyThal$phase4, # Round down to phase 4
         c("0", "0.0") ~ spec$amyThal$none,
         .default = paste("Phase", suppressWarnings(as.numeric(amyThal)))
       ),
-      amyA = get_amyA(amyThal, spec),
-      # All apoe genotype values are already correct, just fill in NA values
-      apoeGenotype = ifelse(is.na(apoeGenotype), spec$missing, apoeGenotype),
-      apoe4Status = get_apoe4Status(apoeGenotype, spec),
       cohort = case_match(
         cohort,
         c("BSHRI", "Banner Sun Health Research Institute") ~ spec$cohort$banner,
@@ -1234,12 +1104,9 @@ harmonize_ASAP <- function(metadata, spec) {
         .default = cohort
       ),
       dataContributionGroup = spec$dataContributionGroup$asap,
-      study = spec$study$asap
-    ) |>
-    # Put the harmonized columns first in the data frame
-    select(all_of(expectedColumns), !any_of(expectedColumns))
+    )
 
-  # De-duplicate individuals
+  # De-duplicate individuals within this data set, *NOT* with AMP-AD 1.0 / DivCo.
   meta_new <- deduplicate_studies(
     list(meta_new), spec,
     include_cols = colnames(meta_new),
@@ -1255,9 +1122,9 @@ harmonize_ASAP <- function(metadata, spec) {
     summarize(
       across(
         everything(),
-        ~ ifelse(is.numeric(.x),
-                 .x, # Leave numeric values alone but keep them in the data frame
-                 paste(unique(.x), collapse = "; "))
+        ~ ifelse(is.character(.x) && !all(is.na(.x)),
+                 paste(unique(.x), collapse = "; "),
+                 unique(.x)) # Leave numeric or NA values alone but keep them in the data frame
       )
     ) |>
     distinct() |>

@@ -131,7 +131,7 @@ if (!file.exists(amp_pd_local_filenames$main_file)) {
              cerad_col = "LBD_Cohort_Path_Data.path_cerad")
   }
 
-  meta_new <- harmonize_AMP_PD(meta, spec)
+  meta_new <- harmonize(spec$study$amp_pd, meta, spec)
 
   if (verbose) {
     print_qc(meta_new)
@@ -142,16 +142,16 @@ if (!file.exists(amp_pd_local_filenames$main_file)) {
 
   # TODO temporary: Don't upload this file yet
   new_filename <- write_metadata(meta_new, basename(amp_pd_local_filenames$main_file))
-  #new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
+  new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
 
-  #manifest <- rbind(
-  #  manifest,
-  #  data.frame(
-  #    GENESIS_study = "GEN-A3",
-  #    study = spec$study$amp_pd,
-  #    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
-  #  )
-  #)
+  manifest <- rbind(
+    manifest,
+    data.frame(
+      GENESIS_study = "GEN-A3",
+      study = spec$study$amp_pd,
+      metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
+    )
+  )
 }
 
 
@@ -180,7 +180,8 @@ if (verbose) {
   print_qc(meta_sea_ad, isHispanic_col = "Hispanic/Latino")
 }
 
-meta_new <- harmonize_SEA_AD(meta, meta_sea_ad, spec)
+meta_new <- harmonize(spec$study$sea_ad, meta, spec,
+                      extra_metadata = meta_sea_ad)
 
 if (verbose) {
   print_qc(meta_new)
@@ -221,7 +222,7 @@ if (verbose) {
   print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity", cerad_col = "CERAD")
 }
 
-meta_new <- harmonize_SMIB_AD(meta, spec)
+meta_new <- harmonize(spec$study$smib_ad, meta, spec)
 
 if (verbose) {
   print_qc(meta_new)
@@ -257,7 +258,7 @@ if (verbose) {
   print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity", cerad_col = "CERAD")
 }
 
-meta_new <- harmonize_MCMPS(meta, spec)
+meta_new <- harmonize(spec$study$mcmps, meta, spec)
 
 if (verbose) {
   print_qc(meta_new)
@@ -294,7 +295,7 @@ if (verbose) {
   print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity", cerad_col = "CERAD")
 }
 
-meta_new <- harmonize_MC_snRNA(meta, harmonized_baseline, spec)
+meta_new <- harmonize(spec$study$mc_snrna, meta, spec, harmonized_baseline)
 
 if (verbose) {
   print_qc(meta_new)
@@ -332,7 +333,7 @@ if (verbose) {
            cerad_col = "CERAD", thal_col = "Thal")
 }
 
-meta_new <- harmonize_MC_BrAD(meta, harmonized_baseline, spec)
+meta_new <- harmonize(spec$study$mc_brad, meta, spec, harmonized_baseline)
 
 if (verbose) {
   print_qc(meta_new)
@@ -378,7 +379,7 @@ if (!file.exists(asap_local_filenames$subject)) {
              apoe_col = "apoe_e4_status")
   }
 
-  meta_new <- harmonize_ASAP(meta, spec)
+  meta_new <- harmonize(spec$study$asap, meta, spec)
 
   if (verbose) {
     print_qc(meta_new)
@@ -435,7 +436,7 @@ if (!file.exists(bd2_local_filename)) {
     print_qc(meta, ageDeath_col = "Age", race_col = "Race", sex_col = "Sex")
   }
 
-  meta_new <- harmonize_BD2(meta, harmonized_baseline, spec)
+  meta_new <- harmonize(spec$study$bd2, meta, spec, harmonized_baseline)
 
   if (verbose) {
     print_qc(meta_new)
