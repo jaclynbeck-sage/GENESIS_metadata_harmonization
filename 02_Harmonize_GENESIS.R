@@ -393,7 +393,7 @@ if (!file.exists(asap_local_filenames$subject)) {
   cat("\nGEN-A15 /", spec$study$asap, "\n")
   validate_values(meta_new, spec)
 
-  new_filename <- write_metadata(meta_new, "ASAP_PMDBS_metadata")
+  new_filename <- write_metadata(meta_new, "ASAP_PMDBS_metadata.csv")
   new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
 
   manifest <- rbind(
