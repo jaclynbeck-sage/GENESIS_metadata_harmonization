@@ -36,8 +36,8 @@ default:
     frequent: "Frequent/Definite/C3"
 
   amyAny:
-    one: "1"
-    zero: "0"
+    amyYes: "yes"
+    amyNo: "no"
 
   amyThal:
     none: "None"
@@ -53,7 +53,7 @@ default:
     phase3: "Thal Phase 3"
     phase4_5: "Thal Phase 4 or 5"
 
-  Braak:
+  Braak_NFT:
     none: "None"
     stage1: "Stage I"
     stage2: "Stage II"
@@ -62,30 +62,45 @@ default:
     stage5: "Stage V"
     stage6: "Stage VI"
 
-  bScore:
+  Braak_LB:
     none: "None"
-    stage1_2: "Braak Stage I-II"
-    stage3_4: "Braak Stage III-IV"
-    stage5_6: "Braak Stage V-VI"
+    stage1: "Stage I"
+    stage2: "Stage II"
+    stage3: "Stage III"
+    stage4: "Stage IV"
+    stage5: "Stage V"
+    stage6: "Stage VI"
+
+  bScore_NFT:
+    none: "None"
+    stage1_2: "Low (Stage I-II)"
+    stage3_4: "Moderate (Stage III-IV)"
+    stage5_6: "High (Stage V-VI)"
+
+  bScore_LB:
+    none: "None"
+    stage1_2: "Low (Stage I-II)"
+    stage3_4: "Moderate (Stage III-IV)"
+    stage5_6: "High (Stage V-VI)"
 
   dataContributionGroup:
     allen_institute: "Allen Institute"
-    asap: "ASAP CRN"
+    asap: "ASAP Collaborative Research Network"
     banner: "Banner Sun Health Research Institute"
-    columbia: "Columbia"
-    emory: "Emory"
+    columbia: "Columbia University"
+    emory: "Emory University"
     harvard: "Harvard Brain Tissue Resource Center"
-    mayo: "Mayo"
-    mssm: "MSSM"
+    mayo: "Mayo Clinic"
+    mssm: "Mount Sinai School of Medicine"
     nimh: "NIMH Human Brain Collection Core"
-    rush: "Rush"
+    rush: "Rush Alzheimer's Disease Center"
     stanley: "Stanley Medical Research Institute"
     udall: "Udall Center of Excellence for Parkinson's Disease Research"
     umiami: "University of Miami Brain Endowment Bank"
     upitt: "University of Pittsburgh"
 
   cohort:
-    banner: "Banner"
+    banner: "Banner Sun Health Research Institute"
     biggs: "Biggs Institute Brain Bank"
     cambridge: "Cambridge Brain Bank"
     clincor: "CLINCOR"
@@ -99,7 +114,7 @@ default:
     map: "MAP"
     mars: "MARS"
     mayo: "Mayo Clinic"
-    msbb: "Mt Sinai Brain Bank"
+    msbb: "Mount Sinai Brain Bank"
     nki: "NKI/NYUGSOM"
     qsbb: "Queen Square Brain Bank"
     ros: "ROS"

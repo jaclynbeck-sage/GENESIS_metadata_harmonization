@@ -36,8 +36,8 @@ verbose <- FALSE
 
 
 syn_ids <- list(
-  "NPS-AD" = "syn65907234.4", # Harmonized file, for GEN-A1
-  "ROSMAP" = "syn64759878.6", # Harmonized file, for GEN-A2, GEN-A8, GEN-A13, GEN-B6
+  "NPS-AD" = "syn65907234.6", # Harmonized file, for GEN-A1
+  "ROSMAP" = "syn64759878.8", # Harmonized file, for GEN-A2, GEN-A8, GEN-A13, GEN-B6
   "SEA-AD" = "syn31149116.8", # SEA-AD, for GEN-A4 and GEN-B5
   # "GEN-A3" (AMP-PD) has a locally-downloaded file
   "GEN-A9" = "syn22432749.1", # SMIB-AD
@@ -45,7 +45,7 @@ syn_ids <- list(
   "GEN-A11" = "syn31563038.1", # MC_snRNA
   "GEN-A12" = "syn51401700.2", # MC-BrAD
   # "GEN-A15" (ASAP) has a locally-downloaded file
-  "Diverse_Cohorts" = "syn64759872.8" # Harmonized file, for GEN-B4
+  "Diverse_Cohorts" = "syn64759872.10" # Harmonized file, for GEN-B4
   # "GEN-B1" = "ADSP - TBD",
   # "GEN-B2" = "TBD - Diverse Cohorts again?",
   # "GEN-B3" = "TBD - ROSMAP Multiome again?"
@@ -127,8 +127,10 @@ if (!file.exists(amp_pd_local_filenames$main_file)) {
              sex_col = "Demographics.sex",
              pmi_col = "PMI.PMI_hours",
              isHispanic_col = "ethnicity",
-             braak_col = "LBD_Cohort_Path_Data.path_braak_nft",
-             cerad_col = "LBD_Cohort_Path_Data.path_cerad")
+             braak_nft_col = "LBD_Cohort_Path_Data.path_braak_nft",
+             braak_lb_col = "LBD_Cohort_Path_Data.path_braak_lb",
+             cerad_col = "LBD_Cohort_Path_Data.path_cerad",
+             bscore_lb_col = "Info.BraakGroup")
   }
 
   meta_new <- harmonize(spec$study$amp_pd, meta, spec)
@@ -140,7 +142,6 @@ if (!file.exists(amp_pd_local_filenames$main_file)) {
   cat("\nGEN-A3 /", spec$study$amp_pd, "\n")
   validate_values(meta_new, spec)
 
-  # TODO temporary: Don't upload this file yet
   new_filename <- write_metadata(meta_new, basename(amp_pd_local_filenames$main_file))
   new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
 
@@ -176,7 +177,8 @@ if (verbose) {
   colnames(meta)
   colnames(meta_sea_ad)
 
-  print_qc(meta, pmi_col = "pmi", cerad_col = "CERAD", thal_col = "Thal.phase")
+  print_qc(meta, pmi_col = "pmi", cerad_col = "CERAD", thal_col = "Thal.phase",
+           braak_nft_col = "Braak")
   print_qc(meta_sea_ad, isHispanic_col = "Hispanic/Latino")
 }
 
@@ -219,7 +221,8 @@ meta <- read.csv(meta_file$path)
 if (verbose) {
   colnames(meta)
 
-  print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity", cerad_col = "CERAD")
+  print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity",
+           cerad_col = "CERAD", braak_nft_col = "Braak")
 }
 
 meta_new <- harmonize(spec$study$smib_ad, meta, spec)
@@ -255,7 +258,8 @@ meta <- read.csv(meta_file$path)
 if (verbose) {
   colnames(meta)
 
-  print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity", cerad_col = "CERAD")
+  print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity",
+           cerad_col = "CERAD", braak_nft_col = "Braak")
 }
 
 meta_new <- harmonize(spec$study$mcmps, meta, spec)
@@ -292,7 +296,8 @@ meta <- read.csv(meta_file$path)
 if (verbose) {
   colnames(meta)
 
-  print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity", cerad_col = "CERAD")
+  print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity",
+           cerad_col = "CERAD", braak_nft_col = "Braak")
 }
 
 meta_new <- harmonize(spec$study$mc_snrna, meta, spec, harmonized_baseline)
@@ -330,7 +335,7 @@ if (verbose) {
   colnames(meta)
 
   print_qc(meta, pmi_col = "pmi", isHispanic_col = "ethnicity",
-           cerad_col = "CERAD", thal_col = "Thal")
+           cerad_col = "CERAD", thal_col = "Thal", braak_nft_col = "Braak")
 }
 
 meta_new <- harmonize(spec$study$mc_brad, meta, spec, harmonized_baseline)
@@ -374,9 +379,9 @@ if (!file.exists(asap_local_filenames$subject)) {
     colnames(meta)
 
     print_qc(meta, pmi_col = "duration_pmi", ageDeath_col = "age_at_death",
-             braak_col = "path_braak_nft", cerad_col = "path_cerad",
-             thal_col = "path_thal", isHispanic_col = "ethnicity",
-             apoe_col = "apoe_e4_status")
+             braak_nft_col = "path_braak_nft", braak_lb_col = "path_braak_asyn",
+             cerad_col = "path_cerad", thal_col = "path_thal",
+             isHispanic_col = "ethnicity", apoe_col = "apoe_e4_status")
   }
 
   meta_new <- harmonize(spec$study$asap, meta, spec)
@@ -475,11 +480,11 @@ df_list <- apply(manifest, 1, function(m_row) {
   m_file <- synapse_download(m_row[["metadata_synid"]])
   meta <- read.csv(m_file$path) |>
     mutate(
-      across(c(individualID, ageDeath, apoeGenotype, amyAny), as.character),
+      across(c(individualID, ageDeath, apoeGenotype), as.character),
       GENESIS_study = m_row[["GENESIS_study"]],
       study = m_row[["study"]]
-    ) #|>
-    #select(all_of(expectedColumns), GENESIS_study)
+    ) |>
+    select(all_of(expectedColumns), GENESIS_study)
   return(meta)
 }, simplify = FALSE)
 

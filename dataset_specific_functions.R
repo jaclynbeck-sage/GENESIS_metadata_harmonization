@@ -69,7 +69,8 @@ harmonize <- function(study_name, metadata, spec, harmonized_baseline = NULL,
       apoe4Status = get_apoe4Status(apoeGenotype, spec),
       amyAny = get_amyAny(amyCerad, spec),
       amyA = get_amyA(amyThal, spec),
-      bScore = get_bScore(Braak, spec),
+      bScore_NFT = get_bScore(Braak_NFT, spec),
+      bScore_LB = get_bScore(Braak_LB, spec),
       # Add study name
       study = study_name
     )
@@ -107,10 +108,14 @@ harmonize <- function(study_name, metadata, spec, harmonized_baseline = NULL,
 # for GENESIS. Source metadata file: syn51757646 (version 20) on Synapse.
 #
 # Modifications needed for version 20:
+#   * Rename columns:
+#     * `Braak` => `Braak_NFT`
+#     * `bScore` => `bScore_NFT`
 #   * Change `ageDeath` and `PMI` value "missing or unknown" to `NA`
 #   * Change `PMI` to a numeric column
 #   * Rename `isHispanic` values from ["TRUE", "FALSE"] to ["True", "False"]
 #   * Rename `race` value "Black" to "Black or African American"
+#   * Update `dataContributionGroup` and `cohort` to conform to the data dictionary
 #
 # NOTE: There are 8 individuals in v20 of the data with incorrect `amyCerad`
 # values, which are corrected manually here based on comparison with ROSMAP
@@ -133,6 +138,10 @@ harmonize_Diverse_Cohorts <- function(metadata, spec) {
   )
 
   metadata |>
+    dplyr::rename(
+      Braak_NFT = Braak,
+      bScore_NFT = bScore
+    ) |>
     dplyr::mutate(
       ageDeath = censor_ages(ageDeath, spec),
       PMI = ifelse(PMI == spec$missing, NA,
@@ -146,8 +155,23 @@ harmonize_Diverse_Cohorts <- function(metadata, spec) {
       ## Manual corrections
       amyCerad = ifelse(individualID %in% cerad_fix_ids,
                         spec$amyCerad$frequent,
-                        amyCerad)
+                        amyCerad),
       ##
+      dataContributionGroup = case_match(
+        dataContributionGroup,
+        "Columbia" ~ spec$dataContributionGroup$columbia,
+        "MSSM" ~ spec$dataContributionGroup$mssm,
+        "Rush" ~ spec$dataContributionGroup$rush,
+        "Emory" ~ spec$dataContributionGroup$emory,
+        "Mayo" ~ spec$dataContributionGroup$mayo,
+        .default = dataContributionGroup
+      ),
+      cohort = case_match(
+        cohort,
+        "Banner" ~ spec$cohort$banner,
+        "Mt Sinai Brain Bank" ~ spec$cohort$msbb,
+        .default = cohort
+      )
     )
 }
 
@@ -165,12 +189,13 @@ harmonize_Diverse_Cohorts <- function(metadata, spec) {
 #     * `ethnicity` => `isHispanic`
 #     * `CERAD` => `amyCerad`
 #     * `Thal` => `amyThal`
+#     * `Braak` => `Braak_NFT`
 #   * Change `ageDeath` value "90_or_over" to "90+"
 #   * Rename `isHispanic` value "Caucasian" to "False"
 #   * Replace `amyThal` value "0" with "None", and add "Phase" in front of other
 #       `amyThal` numerical values
-#   * Convert `Braak` value "0" with "None", and convert other numerical `Braak`
-#       values to "Stage " + a Roman numeral
+#   * Convert `Braak_NFT` value "0" with "None", and convert other numerical
+#       `Braak_NFT` values to "Stage " + a Roman numeral
 #   * Add columns `dataContributionGroup` = "Mayo" and `cohort` = "Mayo Clinic"
 #
 # NOTE: There is one individual with an incorrect `race` value, which is
@@ -192,7 +217,8 @@ harmonize_MayoRNAseq <- function(metadata, spec) {
       PMI = pmi,
       isHispanic = ethnicity,
       amyCerad = CERAD,
-      amyThal = Thal
+      amyThal = Thal,
+      Braak_NFT = Braak
     ) |>
     mutate(
       ageDeath = censor_ages(ageDeath, spec),
@@ -209,7 +235,7 @@ harmonize_MayoRNAseq <- function(metadata, spec) {
         0 ~ spec$amyThal$none,
         .default = paste("Phase", amyThal)
       ),
-      Braak = to_Braak_stage(floor(Braak), spec),
+      Braak_NFT = to_Braak_stage(floor(Braak_NFT), spec),
       cohort = spec$cohort$mayo,
       dataContributionGroup = spec$dataContributionGroup$mayo,
     )
@@ -228,10 +254,11 @@ harmonize_MayoRNAseq <- function(metadata, spec) {
 #     * `pmi` => `PMI`
 #     * `ethnicity` => `isHispanic`
 #     * `CERAD` => `amyCerad`
-#     * `individualIdSource` => `dataContributionGroup`
+#     * `Braak` => `Braak_NFT`
 #   * Convert `PMI` from minutes to hours
 #   * Change `isHispanic` and `race` values to conform to the data dictionary
-#   * Add `cohort` = "Mt Sinai Brain Bank" and `study` = "MSBB"
+#   * Add `dataContributionGroup` = "Mount Sinai School of Medicine",
+#     `cohort` = "Mount Sinai Brain Bank", and `study` = "MSBB"
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -249,7 +276,7 @@ harmonize_MSBB <- function(metadata, spec) {
       PMI = pmi,
       isHispanic = ethnicity,
       amyCerad = CERAD,
-      dataContributionGroup = individualIdSource
+      Braak_NFT = Braak
     ) |>
     mutate(
       PMI = PMI / 60, # PMI is in minutes
@@ -275,7 +302,8 @@ harmonize_MSBB <- function(metadata, spec) {
         .default = as.character(amyCerad)
       ),
       amyThal = spec$missing,
-      Braak = to_Braak_stage(floor(Braak), spec),
+      Braak_NFT = to_Braak_stage(floor(Braak_NFT), spec),
+      dataContributionGroup = spec$dataContributionGroup$mssm,
       cohort = spec$cohort$msbb
     )
 }
@@ -294,7 +322,7 @@ harmonize_MSBB_corrections <- function(metadata, spec) {
       PMI = `PMI (min)`,
       amyCerad = CERAD_1,
       apoeGenotype = ApoE,
-      Braak = `B&B Alz`
+      Braak_NFT = `B&B Alz`
     ) |>
     mutate(
       ageDeath = censor_ages(ageDeath, spec),
@@ -326,7 +354,7 @@ harmonize_MSBB_corrections <- function(metadata, spec) {
         .default = as.character(amyCerad)
       ),
       amyThal = spec$missing,
-      Braak = to_Braak_stage(Braak, spec),
+      Braak_NFT = to_Braak_stage(Braak_NFT, spec),
       cohort = spec$cohort$msbb,
       dataContributionGroup = spec$dataContributionGroup$mssm
     )
@@ -348,7 +376,7 @@ harmonize_MSBB_corrections <- function(metadata, spec) {
 #     * `msex` => `sex`
 #     * `apoe_genotype` => `apoeGenotype`
 #     * `ceradsc` => `amyCerad`
-#     * `braaksc` => `Braak`
+#     * `braaksc` => `Braak_NFT`
 #     * `Study` => `cohort`
 #   * Convert `ageDeath` empty string values to `NA`
 #   * Convert `sex` values [0, 1] to ["female", "male"]
@@ -357,7 +385,7 @@ harmonize_MSBB_corrections <- function(metadata, spec) {
 #       effort as there are only 2 of them and the GENESIS dictionary does not
 #       have a separate category for them.
 #   * Convert `isHispanic` values [1, 2] to ["True", "False"]
-#   * Convert `Braak` numerical values to "None" or "Stage " + Roman numeral
+#   * Convert `Braak_NFT` numerical values to "None" or "Stage " + Roman numeral
 #   * Convert `amyCerad` numerical values to values in data dictionary
 #   * Add `dataContributionGroup` = "Rush" and `study` = "ROSMAP"
 #
@@ -383,7 +411,7 @@ harmonize_ROSMAP <- function(metadata, spec) {
       sex = msex,
       apoeGenotype = apoe_genotype,
       amyCerad = ceradsc,
-      Braak = braaksc,
+      Braak_NFT = braaksc,
       cohort = Study
     ) |>
     dplyr::mutate(
@@ -414,7 +442,7 @@ harmonize_ROSMAP <- function(metadata, spec) {
                           isHispanic),
       apoeGenotype = ifelse(is.na(apoeGenotype), spec$missing,
                             as.character(apoeGenotype)),
-      Braak = to_Braak_stage(Braak, spec),
+      Braak_NFT = to_Braak_stage(Braak_NFT, spec),
       amyCerad = case_match(amyCerad,
         1 ~ spec$amyCerad$frequent,
         2 ~ spec$amyCerad$moderate,
@@ -447,13 +475,14 @@ harmonize_ROSMAP <- function(metadata, spec) {
 #     * `Hispanic.Latino` => `isHispanic`
 #     * `CERAD` => `amyCerad`
 #     * `Thal phase` => `amyThal`
+#     * `Braak` => `Braak NFT`
 #   * Convert `isHispanic` values ["Yes", "No"] to ["True", "False"]
 #   * Individuals may have multiple races in the `race` column, separated by a
 #       semi-colon. Any value with "American Indian" in it is assigned to
 #       "American Indian or Alaska Native".
 #   * Convert `race` value "Other" to "other"
 #   * Convert `amyCerad` numerical values to values in data dictionary
-#   * Convert `Braak` numerical values to "None" or "Stage " + Roman numeral
+#   * Convert `Braak_NFT` numerical values to "None" or "Stage " + Roman numeral
 #   * Convert `amyThal` values from "Thal #" to "None" or "Phase #"
 #   * Add `cohort` ("SEA-AD"), `dataContributionGroup` ("Allen Institute")
 #       and `study` ("SEA-AD")
@@ -500,6 +529,7 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
       isHispanic = "Hispanic/Latino",
       amyCerad = CERAD,
       amyThal = "Thal phase",
+      Braak_NFT = Braak,
       `LATE-NC stage` = "LATE NC stage" # v8 fix to match v7
     ) |>
     dplyr::mutate(
@@ -524,7 +554,7 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
       amyThal = ifelse(amyThal == "Thal 0",
                        spec$amyThal$none,
                        str_replace(amyThal, "Thal", "Phase")),
-      Braak = to_Braak_stage(Braak, spec),
+      Braak_NFT = to_Braak_stage(Braak_NFT, spec),
       cohort = spec$cohort$sea_ad,
       dataContributionGroup = spec$dataContributionGroup$allen_institute,
     )
@@ -556,13 +586,14 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
 #   * Rename columns:
 #     * `ethnicity` => `isHispanic`
 #     * `CERAD` => `amyCerad`
-#     * `BRAAK_AD` => `Braak`
+#     * `BRAAK_AD` => `Braak_NFT`
+#     * `race` => `geneticAncestry` # TODO
 #   * Fix two values in `diverseCohortsIndividualIDFormat` to match the correct
 #     format in Diverse Cohorts
 #   * Manually correct `ageDeath` column as described above
 #   * Convert `PMI` values from minutes to hours
 #   * Convert `isHispanic` values to "True" or "False"
-#   * Convert Braak numerical values to Roman numerals
+#   * Convert Braak_NFT numerical values to Roman numerals
 #   * Convert `amyCerad` numerical values to values in data dictionary
 #   * Fix `cohort` values to match data dictionary
 #   * Add the `dataContributionGroup` column with values appropriate to each
@@ -591,9 +622,10 @@ harmonize_NPS_AD <- function(metadata, neuropath, spec) {
   metadata |>
     select(-Component) |>
     rename(
+      #geneticAncestry = race, # TODO
       isHispanic = ethnicity,
       amyCerad = CERAD,
-      Braak = BRAAK_AD
+      Braak_NFT = BRAAK_AD
     ) |>
     mutate(
       # Fix to allow comparison to Diverse Cohorts
@@ -623,7 +655,7 @@ harmonize_NPS_AD <- function(metadata, neuropath, spec) {
         4 ~ spec$amyCerad$frequent,
         .default = as.character(amyCerad)
       ),
-      Braak = to_Braak_stage(Braak, spec),
+      Braak_NFT = to_Braak_stage(Braak_NFT, spec),
       cohort = ifelse(cohort == "MSBB", spec$cohort$msbb, cohort),
       dataContributionGroup = case_match(cohort,
         spec$cohort$msbb ~ spec$dataContributionGroup$mssm,
@@ -647,10 +679,11 @@ harmonize_NPS_AD <- function(metadata, neuropath, spec) {
 #     * `pmi` => `PMI`
 #     * `ethnicity` => `isHispanic`
 #     * `CERAD` => `amyCerad`
+#     * `Braak` => `Braak_NFT`
 #   * Censor `ageDeath` values over 90
 #   * Change `race` values from "European" to "White"
 #   * Change `isHispanic` values from "European" to "False"
-#   * Convert Braak numerical values to Roman numerals
+#   * Convert Braak_NFT numerical values to Roman numerals
 #   * Convert `amyCerad` numerical values to values in data dictionary
 #   * Add a `cohort` column with either "SMRI" or "Banner"
 #   * Add a `dataContributionGroup` column with values for Stanley and Banner
@@ -670,13 +703,14 @@ harmonize_SMIB_AD <- function(metadata, spec) {
     rename(
       PMI = pmi,
       isHispanic = ethnicity,
-      amyCerad = CERAD
+      amyCerad = CERAD,
+      Braak_NFT = Braak
     ) |>
     mutate(
       ageDeath = censor_ages(ageDeath, spec),
       race = spec$race$White,
       isHispanic = spec$isHispanic$hisp_false,
-      Braak = to_Braak_stage(Braak, spec),
+      Braak_NFT = to_Braak_stage(Braak_NFT, spec),
       amyCerad = case_match(amyCerad,
         1 ~ spec$amyCerad$none,
         2 ~ spec$amyCerad$sparse,
@@ -705,6 +739,7 @@ harmonize_SMIB_AD <- function(metadata, spec) {
 #     * `pmi` => `PMI`
 #     * `ethnicity` => `isHispanic`
 #     * `CERAD` => `amyCerad`
+#     * `Braak` => `Braak_NFT`
 #   * Trim extra spaces from `race` values
 #   * Trim extra spaces from `isHispanic` values and convert to True/False
 #   * Add a `cohort` column containing "Mayo Clinic"
@@ -725,7 +760,8 @@ harmonize_MCMPS <- function(metadata, spec) {
     rename(
       PMI = pmi,
       isHispanic = ethnicity,
-      amyCerad = CERAD
+      amyCerad = CERAD,
+      Braak_NFT = Braak
     ) |>
     mutate(
       race = str_trim(race),
@@ -755,9 +791,10 @@ harmonize_MCMPS <- function(metadata, spec) {
 #     * `pmi` => `PMI`
 #     * `ethnicity` => `isHispanic`
 #     * `CERAD` => `amyCerad`
+#     * `Braak` => `Braak_NFT`
 #   * Change `ageDeath` values of "90_or_over" to "90+"
 #   * Change `isHispanic` values from "Caucasian" to "False"
-#   * Round numerical `Braak` values down and convert to Roman numerals
+#   * Round numerical `Braak_NFT` values down and convert to Roman numerals
 #   * Add a `cohort` column containing "Mayo Clinic"
 #   * Add a `dataContributionGroup` column containing "Mayo"
 #
@@ -776,12 +813,13 @@ harmonize_MC_snRNA <- function(metadata, spec) {
     rename(
       PMI = pmi,
       isHispanic = ethnicity,
-      amyCerad = CERAD
+      amyCerad = CERAD,
+      Braak_NFT = Braak
     ) |>
     mutate(
       ageDeath = censor_ages(ageDeath, spec),
       isHispanic = spec$isHispanic$hisp_false,
-      Braak = to_Braak_stage(floor(Braak), spec),
+      Braak_NFT = to_Braak_stage(floor(Braak_NFT), spec),
       dataContributionGroup = spec$dataContributionGroup$mayo,
       cohort = spec$cohort$mayo
     )
@@ -802,8 +840,9 @@ harmonize_MC_snRNA <- function(metadata, spec) {
 #     * `ethnicity` => `isHispanic`
 #     * `CERAD` => `amyCerad`
 #     * `Thal` => `amyThal`
+#     * `Braak` => `Braak_NFT`
 #   * Change `ageDeath` values of "90_or_over" to "90+"
-#   * Round numerical `Braak` values down and convert to Roman numerals
+#   * Round numerical `Braak_NFT` values down and convert to Roman numerals
 #   * Convert `amyThal` values to conform to data dictionary
 #   * Add a `cohort` column containing "Mayo Clinic"
 #   * Add a `dataContributionGroup` column containing "Mayo"
@@ -824,7 +863,8 @@ harmonize_MC_BrAD <- function(metadata, spec) {
       PMI = pmi,
       isHispanic = ethnicity,
       amyCerad = CERAD,
-      amyThal = Thal
+      amyThal = Thal,
+      Braak_NFT = Braak
     ) |>
     mutate(
       ageDeath = censor_ages(ageDeath, spec),
@@ -833,7 +873,7 @@ harmonize_MC_BrAD <- function(metadata, spec) {
         1 ~ spec$amyThal$phase1,
         .default = as.character(amyThal)
       ),
-      Braak = to_Braak_stage(floor(Braak), spec),
+      Braak_NFT = to_Braak_stage(floor(Braak_NFT), spec),
       dataContributionGroup = spec$dataContributionGroup$mayo,
       cohort = spec$cohort$mayo,
     )
@@ -859,7 +899,7 @@ harmonize_MC_BrAD <- function(metadata, spec) {
 #   * Change `sex` values to all lower case
 #   * Samples with `race` = "Hispanic" changed to `race` = "Other",
 #     `isHispanic` = "True"
-#   * Add a `cohort` column with either "Mt Sinai Brain Bank" or "UPitt"
+#   * Add a `cohort` column with either "Mount Sinai Brain Bank" or "UPitt"
 #   * Change `dataContributionGroup` "UPitt" to "University of Pittsburgh"
 #
 # Arguments:
@@ -939,8 +979,9 @@ harmonize_BD2 <- function(metadata, spec) {
 #     * `ethnicity` => `isHispanic`
 #     * `Demographics.ethnicity` => geneticAncestry`
 #     * `PMI.PMI_hours` => `PMI`
-#     * `LBD_Cohort_Path_Data.path_braak_nft` => `Braak`
+#     * `LBD_Cohort_Path_Data.path_braak_nft` => `Braak_NFT`
 #     * `LBD_Cohort_Path_Data.path_cerad` => `amyCerad`
+#     * `Info.BraakGroup` => `bScore_LB`
 #   * Update `race` values to conform to the data dictionary
 #   * Change `sex` values to all lower case
 #   * Add a `cohort` column based on dataContributionGroup values
@@ -966,8 +1007,10 @@ harmonize_AMP_PD <- function(metadata, spec) {
       isHispanic = ethnicity,
       geneticAncestry = Demographics.ethnicity,
       PMI = PMI.PMI_hours,
-      Braak = LBD_Cohort_Path_Data.path_braak_nft,
-      amyCerad = LBD_Cohort_Path_Data.path_cerad
+      Braak_NFT = LBD_Cohort_Path_Data.path_braak_nft,
+      Braak_LB = LBD_Cohort_Path_Data.path_braak_lb,
+      amyCerad = LBD_Cohort_Path_Data.path_cerad,
+      bScore_LB = Info.BraakGroup
     ) |>
     dplyr::mutate(
       ageDeath = censor_ages(ageDeath, spec),
@@ -980,7 +1023,8 @@ harmonize_AMP_PD <- function(metadata, spec) {
       ),
       race = ifelse(race == "Unknown", spec$missing, race),
       sex = tolower(sex),
-      Braak = to_Braak_stage(Braak, spec),
+      Braak_NFT = to_Braak_stage(Braak_NFT, spec),
+      Braak_LB = to_Braak_stage(Braak_LB, spec),
       # For lack of better information, cohort and dataContributionGroup are
       # effectively the same
       cohort = case_match(
@@ -1019,7 +1063,8 @@ harmonize_AMP_PD <- function(metadata, spec) {
 #     * `age_at_death` => `ageDeath`
 #     * `duration_pmi` => `PMI`
 #     * `ethnicity` => `isHispanic`
-#     * `path_braak_nft` => `Braak`
+#     * `path_braak_nft` => `Braak_NFT`
+#     * `path_braak_asyn` => `Braak_LB`
 #     * `path_cerad` => `amyCerad`
 #     * `path_thal` => `amyThal`
 #     * `apoe_e4_status` => `apoeGenotype`
@@ -1032,8 +1077,8 @@ harmonize_AMP_PD <- function(metadata, spec) {
 #   * Set empty string ("") values in harmonized columns to NA so deduplication works
 #   * Change `sex` values to all lower case
 #   * Change `isHispanic` "Not Reported" values to "missing or unknown"
-#   * Update `Braak`, `amyCerad`, `amyThal`, and `cohort` values to conform to
-#     the data dictionary.
+#   * Update `Braak_NFT`, `amyCerad`, `amyThal`, and `cohort` values to conform
+#     to the data dictionary.
 #   * Add `dataContributionGroup` values based on the `asap_team_id` values.
 #   * Deduplicate rows with the same individual, which are identical except for
 #     some columns where one row is missing a value and one has the value, or
@@ -1056,7 +1101,8 @@ harmonize_ASAP <- function(metadata, spec) {
       ageDeath = age_at_death,
       PMI = duration_pmi,
       isHispanic = ethnicity,
-      Braak = path_braak_nft,
+      Braak_NFT = path_braak_nft,
+      Braak_LB = path_braak_asyn,
       amyCerad = path_cerad,
       amyThal = path_thal,
       apoeGenotype = apoe_e4_status,
@@ -1074,13 +1120,14 @@ harmonize_ASAP <- function(metadata, spec) {
       isHispanic = ifelse(isHispanic == "Not Reported",
                           spec$missing,
                           isHispanic),
-      # Braak is already in Roman numerals except for "0" and ""/NA
-      Braak = case_match(
-        Braak,
+      # Braak_NFT is already in Roman numerals except for "0" and ""/NA
+      Braak_NFT = case_match(
+        Braak_NFT,
         NA ~ spec$missing,
-        "0" ~ spec$Braak$none,
-        .default = paste("Stage", Braak)
+        "0" ~ spec$Braak_NFT$none,
+        .default = paste("Stage", Braak_NFT)
       ),
+      Braak_LB = to_Braak_stage(Braak_LB, spec),
       # It's unclear whether missing values mean "None" or "missing" so they
       # have been left as NA so they are set to "missing".
       amyCerad = case_match(

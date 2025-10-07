@@ -9,7 +9,8 @@
 expectedColumns <- c(
   "individualID", "dataContributionGroup", "cohort", "sex", "race",
   "isHispanic", "ageDeath", "PMI", "apoeGenotype", "apoe4Status", "amyCerad",
-  "amyAny", "amyThal", "amyA", "Braak", "bScore", "study"
+  "amyAny", "amyThal", "amyA", "Braak_NFT", "bScore_NFT", "Braak_LB",
+  "bScore_LB", "study"
 )
 
 
@@ -46,12 +47,14 @@ print_qc <- function(df,
                      amyAny_col = "amyAny",
                      thal_col = "amyThal",
                      amyA_col = "amyA",
-                     braak_col = "Braak",
-                     bscore_col = "bScore") {
+                     braak_nft_col = "Braak_NFT",
+                     bscore_nft_col = "bScore_NFT",
+                     braak_lb_col = "Braak_LB",
+                     bscore_lb_col = "bScore_LB") {
   all_cols <- c(
     ageDeath_col, isHispanic_col, pmi_col, race_col, sex_col, apoe_col,
-    apoe4status_col, cerad_col, amyAny_col, thal_col, amyA_col, braak_col,
-    bscore_col
+    apoe4status_col, cerad_col, amyAny_col, thal_col, amyA_col, braak_nft_col,
+    bscore_nft_col, braak_lb_col, bscore_lb_col
   )
 
   missing <- setdiff(all_cols, colnames(df))
@@ -185,10 +188,16 @@ validate_values <- function(metadata, spec, verbose = TRUE) {
     cat("OK amyCerad vs amyAny\n")
   }
 
-  if (!identical(metadata$bScore, get_bScore(metadata$Braak, spec))) {
-    cat("X bScore does not match Braak\n")
+  if (!identical(metadata$bScore_NFT, get_bScore(metadata$Braak_NFT, spec))) {
+    cat("X bScore_NFT does not match Braak_NFT\n")
   } else if (verbose) {
-    cat("OK Braak vs bScore\n")
+    cat("OK Braak_NFT vs bScore_NFT\n")
+  }
+
+  if (!identical(metadata$bScore_LB, get_bScore(metadata$Braak_LB, spec))) {
+    cat("X bScore_LB does not match Braak_LB\n")
+  } else if (verbose) {
+    cat("OK Braak_LB vs bScore_LB\n")
   }
 }
 
@@ -211,13 +220,13 @@ validate_values <- function(metadata, spec, verbose = TRUE) {
 #   fail validation and can be examined.
 to_Braak_stage <- function(num, spec) {
   return(case_match(num,
-    0 ~ spec$Braak$none,
-    1 ~ spec$Braak$stage1,
-    2 ~ spec$Braak$stage2,
-    3 ~ spec$Braak$stage3,
-    4 ~ spec$Braak$stage4,
-    5 ~ spec$Braak$stage5,
-    6 ~ spec$Braak$stage6,
+    0 ~ spec$Braak_NFT$none,
+    1 ~ spec$Braak_NFT$stage1,
+    2 ~ spec$Braak_NFT$stage2,
+    3 ~ spec$Braak_NFT$stage3,
+    4 ~ spec$Braak_NFT$stage4,
+    5 ~ spec$Braak_NFT$stage5,
+    6 ~ spec$Braak_NFT$stage6,
     NA ~ spec$missing,
     .default = as.character(num)
   ))
@@ -250,10 +259,10 @@ to_Braak_stage <- function(num, spec) {
 #   statement, so the value will fail validation and can be examined.
 get_bScore <- function(Braak, spec) {
   return(case_match(Braak,
-    spec$Braak$none ~ spec$bScore$none,
-    c(spec$Braak$stage1, spec$Braak$stage2) ~ spec$bScore$stage1_2,
-    c(spec$Braak$stage3, spec$Braak$stage4) ~ spec$bScore$stage3_4,
-    c(spec$Braak$stage5, spec$Braak$stage6) ~ spec$bScore$stage5_6,
+    spec$Braak_NFT$none ~ spec$bScore_NFT$none,
+    c(spec$Braak_NFT$stage1, spec$Braak_NFT$stage2) ~ spec$bScore_NFT$stage1_2,
+    c(spec$Braak_NFT$stage3, spec$Braak_NFT$stage4) ~ spec$bScore_NFT$stage3_4,
+    c(spec$Braak_NFT$stage5, spec$Braak_NFT$stage6) ~ spec$bScore_NFT$stage5_6,
     NA ~ spec$missing,
     .default = as.character(Braak)
   ))
@@ -283,10 +292,10 @@ get_bScore <- function(Braak, spec) {
 #   statement, so the value will fail validation and can be examined.
 get_amyAny <- function(amyCerad, spec) {
   return(case_match(amyCerad,
-    spec$amyCerad$none ~ spec$amyAny$zero,
-    spec$amyCerad$sparse ~ spec$amyAny$one,
-    spec$amyCerad$moderate ~ spec$amyAny$one,
-    spec$amyCerad$frequent ~ spec$amyAny$one,
+    spec$amyCerad$none ~ spec$amyAny$amyNo,
+    spec$amyCerad$sparse ~ spec$amyAny$amyYes,
+    spec$amyCerad$moderate ~ spec$amyAny$amyYes,
+    spec$amyCerad$frequent ~ spec$amyAny$amyYes,
     NA ~ spec$missing,
     .default = as.character(amyCerad)
   ))
@@ -944,10 +953,13 @@ determineADoutcome <- function(.data, spec) {
     return(.data[["ADoutcome"]])
   }
 
-  high_Braak <- .data[["Braak"]] %in% c(spec$Braak$stage4, spec$Braak$stage5,
-                                        spec$Braak$stage6)
-  low_Braak <- .data[["Braak"]] %in% c(spec$Braak$none, spec$Braak$stage1,
-                                       spec$Braak$stage2, spec$Braak$stage3)
+  high_Braak <- .data[["Braak_NFT"]] %in% c(spec$Braak_NFT$stage4,
+                                            spec$Braak_NFT$stage5,
+                                            spec$Braak_NFT$stage6)
+  low_Braak <- .data[["Braak_NFT"]] %in% c(spec$Braak_NFT$none,
+                                           spec$Braak_NFT$stage1,
+                                           spec$Braak_NFT$stage2,
+                                           spec$Braak_NFT$stage3)
 
   high_amyCerad <- .data[["amyCerad"]] %in% c(spec$amyCerad$moderate,
                                               spec$amyCerad$frequent)
@@ -968,7 +980,7 @@ determineADoutcome <- function(.data, spec) {
     low_Braak & high_amyCerad ~ "Other",
 
     # Missing one or both of Braak and Cerad
-    .data[["Braak"]] == spec$missing |
+    .data[["Braak_NFT"]] == spec$missing |
       .data[["amyCerad"]] == spec$missing ~ spec$missing,
 
     .default = .data[["ADoutcome"]]

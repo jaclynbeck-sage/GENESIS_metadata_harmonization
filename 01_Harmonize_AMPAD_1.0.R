@@ -66,7 +66,8 @@ print_qc(meta,
   pmi_col = "pmi",
   isHispanic_col = "ethnicity",
   cerad_col = "CERAD",
-  thal_col = "Thal"
+  thal_col = "Thal",
+  braak_nft_col = "Braak"
 )
 
 meta_new <- harmonize(spec$study$mayo, meta, spec) |>
@@ -90,7 +91,8 @@ colnames(meta)
 print_qc(meta,
   pmi_col = "pmi",
   isHispanic_col = "ethnicity",
-  cerad_col = "CERAD"
+  cerad_col = "CERAD",
+  braak_nft_col = "Braak"
 )
 
 meta_new <- harmonize(spec$study$msbb, meta, spec) |>
@@ -117,7 +119,7 @@ print_qc(meta,
          pmi_col = "PMI (min)",
          apoe_col = "ApoE",
          cerad_col = "CERAD_1",
-         braak_col = "B&B Alz"
+         braak_nft_col = "B&B Alz"
 )
 
 meta_new <- harmonize("MSBB_corrections", meta, spec)
@@ -144,7 +146,7 @@ print_qc(meta,
   sex_col = "msex",
   isHispanic_col = "spanish",
   apoe_col = "apoe_genotype",
-  braak_col = "braaksc",
+  braak_nft_col = "braaksc",
   cerad_col = "ceradsc"
 )
 
@@ -173,7 +175,7 @@ meta <- read.csv(meta_file$path)
 
 colnames(meta)
 
-print_qc(meta)
+print_qc(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 
 meta_new <- harmonize(spec$study$diverse_cohorts, meta, spec) |>
   mutate(filename = meta_file$name)
@@ -200,7 +202,7 @@ neuropath <- read.csv(neuro_file$path) |>
 colnames(meta)
 
 print_qc(meta, isHispanic_col = "ethnicity", cerad_col = "CERAD")
-print_qc(neuropath, cerad_col = "CERAD", braak_col = "BRAAK_AD")
+print_qc(neuropath, cerad_col = "CERAD", braak_nft_col = "BRAAK_AD")
 
 meta_new <- harmonize(spec$study$nps_ad, meta, spec, extra_metadata = neuropath) |>
   mutate(filename = meta_file$name)
@@ -244,10 +246,12 @@ new_files <- sapply(df_list, function(meta_old) {
     ".csv"
   )
 
-  # Sorting for this data set gets changed during fill_missing_ampad1.0_ids()
-  # so we sort it back
+  # Sorting for this data set gets changed during fill_missing_ampad1.0_ids() so
+  # we sort it back. Also fill in missing "race" values with "geneticAncestry"
+  # values.
   if (unique(meta_new$study) == "NPS-AD") {
-    meta_new <- arrange(meta_new, individualID)
+    meta_new <- arrange(meta_new, individualID) #|>
+      #mutate(race = ifelse(race == spec$missing, geneticAncestry, race)) # TODO
   }
 
   return(write_metadata(meta_new, new_file))
