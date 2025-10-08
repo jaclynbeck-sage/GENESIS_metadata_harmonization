@@ -45,7 +45,7 @@ syn_ids <- list(
   "GEN-A11" = "syn31563038.1", # MC_snRNA
   "GEN-A12" = "syn51401700.2", # MC-BrAD
   # "GEN-A15" (ASAP) has a locally-downloaded file
-  "Diverse_Cohorts" = "syn64759872.10" # Harmonized file, for GEN-B4
+  "Diverse_Cohorts" = "syn64759872.11" # Harmonized file, for GEN-B4
   # "GEN-B1" = "ADSP - TBD",
   # "GEN-B2" = "TBD - Diverse Cohorts again?",
   # "GEN-B3" = "TBD - ROSMAP Multiome again?"

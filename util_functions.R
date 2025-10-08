@@ -630,8 +630,10 @@ deduplicate_studies <- function(df_list,
         original_individualID = individualID,
         individualID = str_replace(individualID, "AMPAD_MSSM_0+", ""),
         individualID = case_when(
-          individualID == 29637 & dataContributionGroup == "MSSM" ~ "29637_MSSM",
-          individualID == 29582 & dataContributionGroup == "MSSM" ~ "29582_MSSM",
+          individualID == "29637" &
+            dataContributionGroup == spec$dataContributionGroup$mssm ~ "29637_MSSM",
+          individualID == "29582" &
+            dataContributionGroup == spec$dataContributionGroup$mssm ~ "29582_MSSM",
           .default = as.character(individualID)
         ),
         # Special case: Some samples contributed by "Emory" are from "Mt Sinai
@@ -894,7 +896,7 @@ deduplicate_cohort <- function(meta_tmp, leftover, col_name, spec, report_string
 #
 # Returns:
 #   meta_all but with appropriate `individualID_AMPAD_1.0` values filled in
-fill_missing_ampad1.0_ids <- function(meta_all) {
+fill_missing_ampad1.0_ids <- function(meta_all, spec) {
   dc <- subset(meta_all, study == "AMP-AD_DiverseCohorts") |>
     select(individualID, cohort, individualID_AMPAD_1.0, study)
 
@@ -903,8 +905,10 @@ fill_missing_ampad1.0_ids <- function(meta_all) {
       original_individualID = individualID,
       individualID = str_replace(individualID, "AMPAD_MSSM_[0]+", ""),
       individualID = case_when(
-        individualID == 29637 & dataContributionGroup == "MSSM" ~ "29637_MSSM",
-        individualID == 29582 & dataContributionGroup == "MSSM" ~ "29582_MSSM",
+        individualID == "29637" &
+          dataContributionGroup == spec$dataContributionGroup$mssm ~ "29637_MSSM",
+        individualID == "29582" &
+          dataContributionGroup == spec$dataContributionGroup$mssm ~ "29582_MSSM",
         .default = as.character(individualID)
       )
     ) |>

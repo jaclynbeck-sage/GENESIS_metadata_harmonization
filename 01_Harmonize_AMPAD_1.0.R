@@ -218,7 +218,7 @@ df_list[["NPS-AD"]] <- meta_new
 meta_all <- deduplicate_studies(df_list, spec, verbose = FALSE)
 
 meta_all <- subset(meta_all, study != "MSBB_corrections") |>
-  fill_missing_ampad1.0_ids() |> # For Diverse Cohorts
+  fill_missing_ampad1.0_ids(spec) |> # For Diverse Cohorts
   updateADoutcome(spec) # For Diverse Cohorts
 
 print_qc(meta_all)
