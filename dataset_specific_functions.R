@@ -40,6 +40,7 @@ harmonize <- function(study_name, metadata, spec, harmonized_baseline = NULL,
     "MayoRNAseq" = harmonize_MayoRNAseq(metadata, spec),
     "MC-BrAD" = harmonize_MC_BrAD(metadata, spec),
     "MC_snRNA" = harmonize_MC_snRNA(metadata, spec),
+    "McCarroll_SCZ" = harmonize_McCarroll_SCZ(metadata, spec),
     "MCMPS" = harmonize_MCMPS(metadata, spec),
     "MSBB" = harmonize_MSBB(metadata, spec),
     "NPS-AD" = harmonize_NPS_AD(metadata, extra_metadata, spec),
@@ -105,21 +106,16 @@ harmonize <- function(study_name, metadata, spec, harmonized_baseline = NULL,
 #
 # Makes minor edits to the Diverse Cohorts individual metadata file, which was
 # previously harmonized using a very similar data dictionary to what is needed
-# for GENESIS. Source metadata file: syn51757646 (version 20) on Synapse.
+# for GENESIS. Source metadata file: syn51757646 (version 21) on Synapse.
 #
-# Modifications needed for version 20:
+# Modifications needed for version 21:
 #   * Rename columns:
 #     * `Braak` => `Braak_NFT`
 #     * `bScore` => `bScore_NFT`
 #   * Change `ageDeath` and `PMI` value "missing or unknown" to `NA`
 #   * Change `PMI` to a numeric column
 #   * Rename `isHispanic` values from ["TRUE", "FALSE"] to ["True", "False"]
-#   * Rename `race` value "Black" to "Black or African American"
 #   * Update `dataContributionGroup` and `cohort` to conform to the data dictionary
-#
-# NOTE: There are 8 individuals in v20 of the data with incorrect `amyCerad`
-# values, which are corrected manually here based on comparison with ROSMAP
-# metadata.
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -132,11 +128,6 @@ harmonize <- function(study_name, metadata, spec, harmonized_baseline = NULL,
 #   dictionary. Columns not defined in the data dictionary are left as-is.
 #
 harmonize_Diverse_Cohorts <- function(metadata, spec) {
-  cerad_fix_ids <- c(
-    "R5309342", "R1753622", "R7767382", "R3519397", "R5307279",
-    "R5553042", "R9594832", "R1951848"
-  )
-
   metadata |>
     dplyr::rename(
       Braak_NFT = Braak,
@@ -146,17 +137,12 @@ harmonize_Diverse_Cohorts <- function(metadata, spec) {
       ageDeath = censor_ages(ageDeath, spec),
       PMI = ifelse(PMI == spec$missing, NA,
                    suppressWarnings(as.numeric(PMI))),
-      isHispanic = case_match(isHispanic,
+      isHispanic = case_match(
+        as.character(isHispanic),
         "TRUE" ~ spec$isHispanic$hisp_true,
         "FALSE" ~ spec$isHispanic$hisp_false,
-        .default = isHispanic
+        .default = as.character(isHispanic)
       ),
-      race = ifelse(race == "Black", spec$race$Black, race),
-      ## Manual corrections
-      amyCerad = ifelse(individualID %in% cerad_fix_ids,
-                        spec$amyCerad$frequent,
-                        amyCerad),
-      ##
       dataContributionGroup = case_match(
         dataContributionGroup,
         "Columbia" ~ spec$dataContributionGroup$columbia,
@@ -247,9 +233,9 @@ harmonize_MayoRNAseq <- function(metadata, spec) {
 # Modifies the original MSBB individual metadata to conform to the GENESIS
 # data dictionary. This file is not used directly by any GENESIS studies but is
 # instead used to fill in missing information in GENESIS metadata that uses
-# these samples. Source metadata file: syn6101474 (version 9) on Synapse.
+# these samples. Source metadata file: syn6101474 (version 10) on Synapse.
 #
-# Modifications needed for version 9:
+# Modifications needed for version 10:
 #   * Rename columns:
 #     * `pmi` => `PMI`
 #     * `ethnicity` => `isHispanic`
@@ -281,7 +267,7 @@ harmonize_MSBB <- function(metadata, spec) {
     mutate(
       PMI = PMI / 60, # PMI is in minutes
       isHispanic = case_match(isHispanic,
-        c("A", "B", "W") ~ spec$isHispanic$hisp_false,
+        c("A", "B", "O", "W") ~ spec$isHispanic$hisp_false,
         "H" ~ spec$isHispanic$hisp_true,
         "U" ~ spec$missing,
         .default = isHispanic
@@ -291,6 +277,7 @@ harmonize_MSBB <- function(metadata, spec) {
         "B" ~ spec$race$Black,
         "H" ~ spec$race$other,
         "W" ~ spec$race$White,
+        "O" ~ spec$race$other,
         "U" ~ spec$missing,
         .default = race
       ),
@@ -1178,4 +1165,88 @@ harmonize_ASAP <- function(metadata, spec) {
     as.data.frame()
 
   return(meta_new)
+}
+
+
+# Harmonize McCarroll SCZ / GEN-A16 metadata
+#
+# Modifies the McCarroll SCZ metadata file to conform to the GENESIS data
+# dictionary. Data downloaded from the NeMo Archive on Oct 08, 2025 from:
+# https://data.nemoarchive.org/other/grant/broad/mccarroll/transcriptome/sncell/10x_v3.1/human/processed/other/SZvillage_donorMetadata.txt
+#
+# Modifications needed for version Oct 08, 2025:
+# * Rename columns:
+#   * `Donor` => `individualID`
+#   * `Sex` => `sex`
+#   * `Age` => `ageDeath`
+# * Censor ages above 90
+# * Change `sex` values to all lower case
+# * Add `dataContributionGroup` = ??
+# * Add `cohort` = ??
+#
+# Arguments:
+#   metadata - a `data.frame` of metadata from the source metadata file. Columns
+#     are variables and rows are individuals.
+#   spec - a `config` object describing the standardized values for each field,
+#     as defined by this project's `GENESIS_harmonization.yml` file
+#
+# Returns:
+#   a `data.frame` with all relevant fields harmonized to the GENESIS data
+#   dictionary. Columns not defined in the data dictionary are left as-is.
+#
+harmonize_McCarroll_SCZ <- function(metadata, spec) {
+  metadata |>
+    dplyr::rename(
+      individualID = Donor,
+      sex = Sex,
+      ageDeath = Age
+    ) |>
+    mutate(
+      ageDeath = censor_ages(ageDeath, spec),
+      sex = tolower(sex)#,
+      #dataContributionGroup = ??,
+      #cohort = ??
+    )
+}
+
+
+# Harmonize McCarroll HD / GEN-A17 metadata
+#
+# Modifies the McCarroll HD metadata file to conform to the GENESIS data
+# dictionary. Data downloaded from the NeMo Archive on Oct 08, 2025 from:
+# https://data.nemoarchive.org/other/grant/broad_mccarroll_HD_2024/mccarroll/transcriptome/sncell/10x_v3.1/human/processed/other/donor_metadata.txt
+#
+# Modifications needed for version Oct 08, 2025:
+# * Rename columns:
+#   * `SID` => `individualID`
+#   * `Sex` => `sex`
+#   * `Age` => `ageDeath`
+# * Change `ageDeath` values of ">89" to "90+"
+# * Change `sex` values to all lower case
+# * Add `dataContributionGroup` = ??
+# * Add `cohort` = ??
+#
+# Arguments:
+#   metadata - a `data.frame` of metadata from the source metadata file. Columns
+#     are variables and rows are individuals.
+#   spec - a `config` object describing the standardized values for each field,
+#     as defined by this project's `GENESIS_harmonization.yml` file
+#
+# Returns:
+#   a `data.frame` with all relevant fields harmonized to the GENESIS data
+#   dictionary. Columns not defined in the data dictionary are left as-is.
+#
+harmonize_McCarroll_HD <- function(metadata, spec) {
+  metadata |>
+    dplyr::rename(
+      individualID = SID,
+      sex = Sex,
+      ageDeath = Age
+    ) |>
+    mutate(
+      ageDeath = ifelse(ageDeath == ">89", spec$over90, ageDeath),
+      sex = tolower(sex)#,
+      #dataContributionGroup = ??,
+      #cohort = ??
+    )
 }

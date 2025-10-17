@@ -36,9 +36,9 @@ source("dataset_specific_functions.R")
 UPLOAD_SYNID <- "syn65931571"
 
 syn_ids <- list(
-  "Diverse_Cohorts" = "syn51757646.20",
+  "Diverse_Cohorts" = "syn51757646.21",
   "MayoRNAseq" = "syn23277389.7",
-  "MSBB" = "syn6101474.9",
+  "MSBB" = "syn6101474.10",
   "ROSMAP" = "syn3191087.11",
   "NPS-AD" = "syn55251012.4", # intentionally one version behind due to v5 being a copy of the harmonized file generated here
   "NPS-AD_neuropath" = "syn55251003.1",

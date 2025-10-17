@@ -136,6 +136,8 @@ default:
     mayo: "MayoRNAseq"
     mc_brad: "MC-BrAD"
     mc_snrna: "MC_snRNA"
+    mccarroll_scz: "McCarroll_SCZ"
+    mccarroll_hd: "McCarroll_HD"
     mcmps: "MCMPS"
     mit_rosmap: "MIT_ROSMAP_Multiomics"
     msbb: "MSBB"
