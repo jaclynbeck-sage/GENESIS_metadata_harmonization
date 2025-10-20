@@ -434,7 +434,7 @@ write_metadata <- function(metadata, filename) {
   }
 
   new_filename <- file.path(
-    "data", "output", str_replace(filename, ".csv", "_harmonized.csv")
+    "data", "output", str_replace(filename, "\\.(csv|txt)", "_harmonized.csv")
   )
   write.csv(metadata, new_filename,
     row.names = FALSE, quote = FALSE

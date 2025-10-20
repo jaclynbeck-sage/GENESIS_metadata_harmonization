@@ -41,6 +41,7 @@ harmonize <- function(study_name, metadata, spec, harmonized_baseline = NULL,
     "MC-BrAD" = harmonize_MC_BrAD(metadata, spec),
     "MC_snRNA" = harmonize_MC_snRNA(metadata, spec),
     "McCarroll_SCZ" = harmonize_McCarroll_SCZ(metadata, spec),
+    "McCarroll_HD" = harmonize_McCarroll_HD(metadata, spec),
     "MCMPS" = harmonize_MCMPS(metadata, spec),
     "MSBB" = harmonize_MSBB(metadata, spec),
     "NPS-AD" = harmonize_NPS_AD(metadata, extra_metadata, spec),
@@ -1181,8 +1182,8 @@ harmonize_ASAP <- function(metadata, spec) {
 #   * `Age` => `ageDeath`
 # * Censor ages above 90
 # * Change `sex` values to all lower case
-# * Add `dataContributionGroup` = ??
-# * Add `cohort` = ??
+# * Add `dataContributionGroup` = "Broad Institute"
+# * Add `cohort` = "HBTRC"
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -1203,9 +1204,9 @@ harmonize_McCarroll_SCZ <- function(metadata, spec) {
     ) |>
     mutate(
       ageDeath = censor_ages(ageDeath, spec),
-      sex = tolower(sex)#,
-      #dataContributionGroup = ??,
-      #cohort = ??
+      sex = tolower(sex),
+      dataContributionGroup = spec$dataContributionGroup$broad,
+      cohort = spec$cohort$harvard
     )
 }
 
@@ -1222,9 +1223,10 @@ harmonize_McCarroll_SCZ <- function(metadata, spec) {
 #   * `Sex` => `sex`
 #   * `Age` => `ageDeath`
 # * Change `ageDeath` values of ">89" to "90+"
+# * Convert `PMI` to numeric values and replace "n/a" with NA
 # * Change `sex` values to all lower case
-# * Add `dataContributionGroup` = ??
-# * Add `cohort` = ??
+# * Add `dataContributionGroup` = "Broad Institute"
+# * Add `cohort` = "HBTRC"
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -1245,8 +1247,9 @@ harmonize_McCarroll_HD <- function(metadata, spec) {
     ) |>
     mutate(
       ageDeath = ifelse(ageDeath == ">89", spec$over90, ageDeath),
-      sex = tolower(sex)#,
-      #dataContributionGroup = ??,
-      #cohort = ??
+      PMI = ifelse(PMI == "n/a", NA, suppressWarnings(as.numeric(PMI))),
+      sex = tolower(sex),
+      dataContributionGroup = spec$dataContributionGroup$broad,
+      cohort = spec$cohort$harvard
     )
 }

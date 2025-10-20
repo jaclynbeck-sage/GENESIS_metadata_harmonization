@@ -38,7 +38,7 @@ verbose <- FALSE
 
 
 syn_ids <- list(
-  "NPS-AD" = "syn65907234.6", # Harmonized file, for GEN-A1
+  "NPS-AD" = "syn65907234.7", # Harmonized file, for GEN-A1
   "ROSMAP" = "syn64759878.8", # Harmonized file, for GEN-A2, GEN-A8, GEN-A13, GEN-B6
   "SEA-AD" = "syn31149116.8", # SEA-AD, for GEN-A4 and GEN-B5
   # "GEN-A3" (AMP-PD) has a locally-downloaded file
@@ -48,7 +48,7 @@ syn_ids <- list(
   "GEN-A12" = "syn51401700.2", # MC-BrAD
   # "GEN-A15" (ASAP) has a locally-downloaded file
   # "GEN-A16" and "GEN-A17" (McCarroll SCZ and HD) have locally downloaded files
-  "Diverse_Cohorts" = "syn64759872.11" # Harmonized file, for GEN-B4
+  "Diverse_Cohorts" = "syn64759872.12" # Harmonized file, for GEN-B4
   # "GEN-B1" = "ADSP - TBD",
   # "GEN-B2" = "TBD - Diverse Cohorts again?",
   # "GEN-B3" = "TBD - ROSMAP Multiome again?"
@@ -58,27 +58,23 @@ syn_ids <- list(
 ## Local files
 
 amp_pd_local_filenames <- list(
-  "main_file" = file.path("data", "downloads", "AMP-PD_donor_metadata.csv"),
-  "demographics" = file.path("data", "downloads",
+  "main_file" = file.path("data", "local_metadata", "AMP-PD_donor_metadata.csv"),
+  "demographics" = file.path("data", "local_metadata",
                              "releases_2023_v4release_1027_clinical_Demographics.csv")
 )
 
 asap_local_filenames <- list(
-  "clinical" = file.path("data", "downloads", "ASAP_clinpath-export-2025-10-02.csv"),
-  "subject" = file.path("data", "downloads", "ASAP_subject-export-2025-10-02.csv")
+  "clinical" = file.path("data", "local_metadata", "ASAP_clinpath-export-2025-10-02.csv"),
+  "subject" = file.path("data", "local_metadata", "ASAP_subject-export-2025-10-02.csv")
 )
 
-bd2_local_filename <- file.path("data", "downloads", "BD2_metadata.csv")
+bd2_local_filename <- file.path("data", "local_metadata", "BD2_metadata.csv")
 
-mccarroll_scz_url <- paste0(
-  "https://data.nemoarchive.org/other/grant/broad/mccarroll/transcriptome/",
-  "sncell/10x_v3.1/human/processed/other/SZvillage_donorMetadata.txt"
-)
+mccarroll_scz_file <- file.path("data", "local_metadata",
+                                "McCarroll_SZvillage_donorMetadata.txt")
 
-mccarroll_hd_url <- paste0(
-  "https://data.nemoarchive.org/other/grant/broad_mccarroll_HD_2024/mccarroll/",
-  "transcriptome/sncell/10x_v3.1/human/processed/other/donor_metadata.txt"
-)
+mccarroll_hd_file <- file.path("data", "local_metadata",
+                               "McCarroll_HD_donor_metadata.txt")
 
 ##
 
@@ -429,77 +425,77 @@ if (!file.exists(asap_local_filenames$subject)) {
 # GEN-A16 ----------------------------------------------------------------------
 # McCarroll SCZ
 
-mccarroll_scz_file <- file.path(
-  "data", "downloads", paste0("McCarroll_", basename(mccarroll_scz_url))
-)
-download.file(mccarroll_scz_url, mccarroll_scz_file)
+if (!file.exists(mccarroll_scz_file)) {
+  warning(str_glue("McCarroll SCZ file {mccarroll_scz_file} doesn't exist! ",
+                   "This dataset will be excluded from harmonization."))
+} else {
+  meta <- read.delim(mccarroll_scz_file)
 
-meta <- read.delim(mccarroll_scz_file)
+  if (verbose) {
+    colnames(meta)
 
-if (verbose) {
-  colnames(meta)
+    print_qc(meta, ageDeath_col = "Age", sex_col = "Sex")
+  }
 
-  print_qc(meta, ageDeath_col = "Age", sex_col = "Sex")
-}
+  meta_new <- harmonize(spec$study$mccarroll_scz, meta, spec)
 
-meta_new <- harmonize(spec$study$mccarroll_scz, meta, spec)
+  if (verbose) {
+    print_qc(meta_new)
+  }
 
-if (verbose) {
-  print_qc(meta_new)
-}
+  cat("\nGEN-A16 /", spec$study$mccarroll_scz, "\n")
+  validate_values(meta_new, spec)
 
-cat("\nGEN-A16 /", spec$study$mccarroll_scz, "\n")
-validate_values(meta_new, spec)
+  new_filename <- write_metadata(meta_new, basename(mccarroll_scz_file))
+  new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
 
-new_filename <- write_metadata(meta_new, basename(mccarroll_scz_file))
-new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
-
-manifest <- rbind(
-  manifest,
-  data.frame(
-    GENESIS_study = "GEN-A16",
-    study = spec$study$mccarroll_scz,
-    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
+  manifest <- rbind(
+    manifest,
+    data.frame(
+      GENESIS_study = "GEN-A16",
+      study = spec$study$mccarroll_scz,
+      metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
+    )
   )
-)
+}
 
 
 # GEN-A17 ----------------------------------------------------------------------
 # McCarroll HD
 
-mccarroll_hd_file <- file.path(
-  "data", "downloads", paste0("McCarroll_HD_", basename(mccarroll_hd_url))
-)
-download.file(mccarroll_hd_url, mccarroll_hd_file)
+if (!file.exists(mccarroll_hd_file)) {
+  warning(str_glue("McCarroll HD file {mccarroll_hd_file} doesn't exist! ",
+                   "This dataset will be excluded from harmonization."))
+} else {
+  meta <- read.delim(mccarroll_hd_file)
 
-meta <- read.delim(mccarroll_hd_file)
+  if (verbose) {
+    colnames(meta)
 
-if (verbose) {
-  colnames(meta)
+    print_qc(meta, ageDeath_col = "Age", sex_col = "Sex")
+  }
 
-  print_qc(meta, ageDeath_col = "Age", sex_col = "Sex")
-}
+  meta_new <- harmonize(spec$study$mccarroll_hd, meta, spec)
 
-meta_new <- harmonize(spec$study$mccarroll_hd, meta, spec)
+  if (verbose) {
+    print_qc(meta_new)
+  }
 
-if (verbose) {
-  print_qc(meta_new)
-}
+  cat("\nGEN-A17 /", spec$study$mccarroll_hd, "\n")
+  validate_values(meta_new, spec)
 
-cat("\nGEN-A17 /", spec$study$mccarroll_hd, "\n")
-validate_values(meta_new, spec)
+  new_filename <- write_metadata(meta_new, basename(mccarroll_hd_file))
+  new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
 
-new_filename <- write_metadata(meta_new, basename(mccarroll_hd_file))
-new_syn_id <- synapse_upload(new_filename, UPLOAD_SYNID)
-
-manifest <- rbind(
-  manifest,
-  data.frame(
-    GENESIS_study = "GEN-A17",
-    study = spec$study$mccarroll_hd,
-    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
+  manifest <- rbind(
+    manifest,
+    data.frame(
+      GENESIS_study = "GEN-A17",
+      study = spec$study$mccarroll_hd,
+      metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
+    )
   )
-)
+}
 
 
 # GEN-B4 -----------------------------------------------------------------------
