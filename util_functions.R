@@ -4,16 +4,6 @@
 # harmonized values, harmonized value validation, and de-duplication of data
 # across multiple studies.
 
-# Global variable -- all columns that are harmonized and should be in each
-# metadata table
-expectedColumns <- c(
-  "individualID", "dataContributionGroup", "cohort", "sex", "race",
-  "isHispanic", "ageDeath", "PMI", "apoeGenotype", "apoe4Status", "amyCerad",
-  "amyAny", "amyThal", "amyA", "Braak_NFT", "bScore_NFT", "Braak_LB",
-  "bScore_LB", "study"
-)
-
-
 # Quality control printouts
 #
 # Prints summaries of all expected columns for visual inspection:
@@ -85,8 +75,7 @@ print_qc <- function(df,
 
   if (ageDeath_col %in% colnames(df)) {
     cat("Age check:\n")
-    # "89+" applies to NPS-AD only, all other studies use "90+" or "90_or_over"
-    ages_remove <- c("90+", "89+", "90_or_over", "Missing or unknown", "missing or unknown")
+    ages_remove <- c("90+", "89+", "89+ ", "90_or_over", "Missing or unknown", "missing or unknown")
     tmp <- subset(df, !(df[, ageDeath_col] %in% ages_remove)) |>
       mutate(ageDeath = suppressWarnings(as.numeric(.data[[ageDeath_col]]))) |>
       subset(ageDeath >= 90)
@@ -127,7 +116,7 @@ validate_values <- function(metadata, spec, verbose = TRUE) {
   # ageDeath should have only NA, numbers, or "90+". No numbers should be above
   # 89.
   ageDeath <- na.omit(metadata$ageDeath) |>
-    setdiff(spec$over90) |>
+    setdiff(spec$ageDeath$over90) |>
     as.numeric()
 
   if (any(ageDeath >= 90, na.rm = TRUE)) {
@@ -136,7 +125,7 @@ validate_values <- function(metadata, spec, verbose = TRUE) {
     # NAs introduced by coercion to numeric, warn about initial value
     nas <- which(is.na(ageDeath))
     tmp <- na.omit(metadata$ageDeath) |>
-      setdiff(spec$over90)
+      setdiff(spec$ageDeath$over90)
     cat(
       "X  ageDeath has invalid age values:",
       paste(tmp[nas], collapse = ", "), "\n"
@@ -154,7 +143,7 @@ validate_values <- function(metadata, spec, verbose = TRUE) {
   }
 
   # Other columns should have only string values that exist in the dictionary
-  cols_check <- setdiff(expectedColumns, c("individualID", "ageDeath", "PMI"))
+  cols_check <- setdiff(spec$required_columns, c("individualID", "ageDeath", "PMI"))
 
   for (col_name in cols_check) {
     values <- metadata[, col_name]
@@ -393,10 +382,10 @@ get_apoe4Status <- function(apoeGenotype, spec) {
 #   a vector of strings with age values properly censored
 censor_ages <- function(ages, spec) {
   return(case_when(
-    ages %in% c("90+", "90_or_over", "89+") ~ spec$over90,
+    ages %in% c("90+", "90_or_over", "89+", "89+ ") ~ spec$ageDeath$over90,
     ages == "" ~ NA,
     ages == spec$missing ~ NA,
-    suppressWarnings(as.numeric(ages)) >= 90 ~ spec$over90,
+    suppressWarnings(as.numeric(ages)) >= 90 ~ spec$ageDeath$over90,
     .default = as.character(ages)
   ))
 }
@@ -433,9 +422,15 @@ write_metadata <- function(metadata, filename) {
     }
   }
 
-  new_filename <- file.path(
-    "data", "output", str_replace(filename, "\\.(csv|txt)", "_harmonized.csv")
-  )
+  # Some files already have "_harmonized" in the filename, so we remove it if it
+  # exists to avoid duplicating "_harmonized". Also, always ensure the output
+  # file is a csv, regardless of the input format.
+  new_filename <- str_replace(filename,
+                              "(_harmonized)?\\.(csv|txt)",
+                              "_harmonized.csv")
+
+  new_filename <- file.path("data", "output", new_filename)
+
   write.csv(metadata, new_filename,
     row.names = FALSE, quote = FALSE
   )
@@ -574,15 +569,11 @@ check_new_versions <- function(syn_id_list) {
 #   3. For the ageDeath/PMI columns where rows have different numbers, report
 #      the difference but leave the values as-is. If rows disagree only because
 #      of precision, nothing is reported.
-#   4. For cases where cohort values disagree, resolve as follows:
-#       a) Replace "ROSMAP" with the cohort value from Diverse Cohorts /
-#          AMP-AD 1.0,
-#       b) Ignore cases where the disagreement is "Mayo Clinic" vs "Banner",
-#       c) Otherwise, report the difference but don't change any values
-#   5. For cases where "MSBB_corrections" disagrees with another source,
-#      the value from "MSBB_corrections" is always used except for the
-#      "apoeGenotype" and "apoe4Status" columns, where the "NPS-AD" value is
-#      used instead if it is available.
+#   4. For cases where "MSBB" disagrees with another source, the value from
+#      "MSBB" is always used except for the "apoeGenotype" and "apoe4Status"
+#      columns, where the "NPS-AD" value is used instead if it is available.
+#      MSBB data is preferentially used because it has been corrected by updated
+#      data, while some NPS values have not.
 #
 # When duplicated data is un-resolvable, either because it is a special case
 # that is intentionally flagged or because this function doesn't have anything
@@ -616,7 +607,7 @@ check_new_versions <- function(syn_id_list) {
 #   for rows that come from data frames without that column.
 deduplicate_studies <- function(df_list,
                                 spec,
-                                include_cols = expectedColumns,
+                                include_cols = spec$required_columns,
                                 exclude_cols = c("study"),
                                 verbose = TRUE) {
   # Make sure certain fields in each data frame are of the same type. Also
@@ -648,7 +639,7 @@ deduplicate_studies <- function(df_list,
       )
   })
 
-  meta_all <- purrr::list_rbind(df_list)
+  meta_all <- purrr::list_rbind(df_list) |> as.data.frame()
   include_cols <- setdiff(include_cols, exclude_cols)
 
   # Find IDs that have multiple/duplicate rows. Adding dataContributionGroup
@@ -713,18 +704,17 @@ deduplicate_studies <- function(df_list,
             # Use the NPS-AD value for apoe genotype / status where it disagrees
             # with other data sets
             meta_tmp[, col_name] <- meta_tmp[meta_tmp$study == "NPS-AD", col_name]
-          } else if ("MSBB_corrections" %in% meta_tmp$study) {
+          } else if ("MSBB" %in% meta_tmp$study) {
             if (col_name %in% c("race", "isHispanic")) {
               # Do not correct NPS-AD race or isHispanic values
               meta_tmp[meta_tmp$study != "NPS-AD", col_name] <-
-                meta_tmp[meta_tmp$study == "MSBB_corrections", col_name]
+                meta_tmp[meta_tmp$study == "MSBB", col_name]
             } else {
-              meta_tmp[, col_name] <- meta_tmp[meta_tmp$study == "MSBB_corrections", col_name]
+              meta_tmp[, col_name] <- meta_tmp[meta_tmp$study == "MSBB", col_name]
             }
           } else if (col_name %in% c("ageDeath", "PMI")) {
             meta_tmp <- deduplicate_ageDeath_pmi(meta_tmp, leftover, col_name, report_string)
-          } else if (col_name == "cohort") {
-            meta_tmp <- deduplicate_cohort(meta_tmp, leftover, col_name, spec, report_string)
+
           } else {
             # Column is something else that we don't have specific handling for,
             # so we report it but don't try to resolve duplication.
@@ -785,29 +775,38 @@ deduplicate_ageDeath_pmi <- function(meta_tmp, leftover, col_name, report_string
 
   equivalent <- sapply(num_vals, all.equal, num_vals[1], tolerance = 1e-3)
 
-  # If there's a real mismatch, try using the NPS-AD value if it exists. If not,
-  # report the mismatch. `num_vals` should have one unique value if all numbers
-  # are roughly equal, AND `num_vals` should be the same length as `leftover`.
-  # If it's not, that means not all values in `leftover` are numeric (i.e. one
-  # may be 90+). We report it but don't try and resolve the duplication. Note
-  # that `all.equal` returns a string with the difference between two numbers if
-  # they are not equal, rather than FALSE, so we have to check for != TRUE
-  # instead of == FALSE.
+  # If there's a real mismatch, try using the MSBB value if it exists. If not,
+  # then use the NPS-AD if it exists. If not, report the mismatch. `num_vals`
+  # should have one unique value if all numbers are roughly equal, AND
+  # `num_vals` should be the same length as `leftover`. If it's not, that means
+  # not all values in `leftover` are numeric (i.e. one may be 90+). We report it
+  # but don't try and resolve the duplication. Note that `all.equal` returns a
+  # string with the difference between two numbers if they are not equal, rather
+  # than FALSE, so we have to check for != TRUE instead of == FALSE.
   if (any(equivalent != TRUE)) {
-    if ("NPS-AD" %in% meta_tmp$study) {
+    if ("MSBB" %in% meta_tmp$study) {
+      meta_tmp[, col_name] <- meta_tmp[meta_tmp$study == "MSBB", col_name]
+    }
+    else if ("NPS-AD" %in% meta_tmp$study) {
       meta_tmp[, col_name] <- meta_tmp[meta_tmp$study == "NPS-AD", col_name]
     } else {
       cat(report_string)
     }
   } else if (length(leftover) != ncol(meta_tmp)) {
     # No real mismatch but at least one value was NA and there are multiple
-    # close-enough values. Use NPS-AD value first if it exists, then Diverse
-    # Cohorts if it exists. Otherwise print.
+    # close-enough values. Use MSBB value first if it exists, then NPS-AD if it
+    # exists, then Diverse Cohorts if it exists. Otherwise print.
     na_vals <- which(is.na(meta_tmp[, col_name]))
 
-    if ("NPS-AD" %in% meta_tmp$study) {
+    if ("MSBB" %in% meta_tmp$study &&
+        !is.na(meta_tmp[meta_tmp$study == "MSBB", col_name])) {
+      meta_tmp[na_vals, col_name] <- meta_tmp[meta_tmp$study == "MSBB", col_name]
+    }
+    else if ("NPS-AD" %in% meta_tmp$study &&
+             !is.na(meta_tmp[meta_tmp$study == "NPS-AD", col_name])) {
       meta_tmp[na_vals, col_name] <- meta_tmp[meta_tmp$study == "NPS-AD", col_name]
-    } else if ("AMP-AD_DiverseCohorts" %in% meta_tmp$study) {
+    } else if ("AMP-AD_DiverseCohorts" %in% meta_tmp$study &&
+               !is.na(meta_tmp[meta_tmp$study == "AMP-AD_DiverseCohorts", col_name])) {
       meta_tmp[na_vals, col_name] <- meta_tmp[meta_tmp$study == "AMP-AD_DiverseCohorts", col_name]
     } else {
       cat("Unresolved NA fill: ", report_string)
@@ -820,124 +819,7 @@ deduplicate_ageDeath_pmi <- function(meta_tmp, leftover, col_name, report_string
 }
 
 
-# Cohort-specific handling for de-duplication
-#
-# This function is used inside `deduplicate_studies` to resolve duplication of
-# cohort values for a single individual. If this function is called, then
-# there are at least 2 distinct, non-NA values in the `cohort` column that are
-# assigned to this individual. This function handles two special cases and
-# defaults to just reporting the duplication if neither special case applies:
-#   1. NPS-AD reports the `cohort` of all ROSMAP samples as "ROSMAP" rather than
-#      identifying them as "ROS" or "MAP" separately. All of these samples exist
-#      in Diverse Cohorts or ROSMAP 1.0 metadata, which has the correct
-#      separation into "ROS" and "MAP", so we replace NPS-AD's ROSMAP `cohort`
-#      values with the correct values from DC/ROSMAP 1.0.
-#   2. Mayo Clinic 1.0 metadata reports cohort as "Mayo Clinic" while the same
-#      samples in Diverse Cohorts are reported as "Banner". This difference
-#      is ignored as only the Diverse Cohorts metadata is used directly.
-#
-# Arguments:
-#   meta_tmp - a data frame with 2 or more rows, where all rows have the same
-#     individual ID and there are 2 or more distinct values in the `cohort`
-#     column
-#   leftover - a vector of unique values from <col_name> for this individual,
-#     which has had `NA` values removed
-#   col_name - the name of the column being handled ("cohort")
-#   report_string - the string that gets printed out if there is a real
-#     difference between values that is not due to precision. The string
-#     contains the `individualID`, column name, and unique values in the column.
-#
-# Returns:
-#   meta_tmp, which will have some `cohort` values replaced if the original
-#   value was "ROSMAP". Other values and columns are left as-is.
-deduplicate_cohort <- function(meta_tmp, leftover, col_name, spec, report_string) {
-  # If there is more than one left over value and the values don't meet the two
-  # special cases below, report it but don't try to resolve duplication.
-
-  # Special case: NPS-AD reports cohort on some samples as "ROSMAP", which needs
-  # to instead use the cohort value from Diverse Cohorts or ROSMAP 1.0 data.
-  if ("ROSMAP" %in% leftover) {
-    cohort_val <- setdiff(leftover, "ROSMAP")
-
-    # If there is still more than one value for cohort, or no remaining values,
-    # report it but don't resolve the de-duplication
-    if (length(cohort_val) != 1) {
-      cat(report_string)
-    } else {
-      # Otherwise resolve duplication
-      meta_tmp[, col_name] <- cohort_val
-    }
-  } else {
-    # Special case: Mayo data may be labeled as "Mayo Clinic" in the original
-    # Mayo metadata or "Banner" in Diverse Cohorts, but we don't need to change
-    # this in either metadata file or print it out.
-    is_mayo_banner <- identical(sort(leftover), c(spec$cohort$banner, spec$cohort$mayo))
-
-    if (!is_mayo_banner) {
-      cat(report_string)
-    }
-  }
-
-  return(meta_tmp)
-}
-
-
-# Fill missing AMP-AD 1.0 values in Diverse Cohorts
-#
-# The Diverse Cohorts metadata has an `individualID_AMPAD_1.0` column that is
-# supposed to have the corresponding AMP-AD 1.0 ID if that sample exists in 1.0
-# data. However this field has a lot of NAs for samples that do exist in 1.0
-# data, whether intentional or not. This function fills in the matching ID from
-# 1.0 data in these cases.
-#
-# Arguments:
-#   meta_all - a data.frame of all Diverse Cohorts, AMP-AD 1.0, and NPS-AD data
-#     as returned by `deduplicate_studies()`.
-#
-# Returns:
-#   meta_all but with appropriate `individualID_AMPAD_1.0` values filled in
-fill_missing_ampad1.0_ids <- function(meta_all, spec) {
-  dc <- subset(meta_all, study == "AMP-AD_DiverseCohorts") |>
-    select(individualID, cohort, individualID_AMPAD_1.0, study)
-
-  ampad_1.0 <- subset(meta_all, study %in% c("MayoRNAseq", "MSBB", "ROSMAP")) |>
-    mutate(
-      original_individualID = individualID,
-      individualID = str_replace(individualID, "AMPAD_MSSM_[0]+", ""),
-      individualID = case_when(
-        individualID == "29637" &
-          dataContributionGroup == spec$dataContributionGroup$mssm ~ "29637_MSSM",
-        individualID == "29582" &
-          dataContributionGroup == spec$dataContributionGroup$mssm ~ "29582_MSSM",
-        .default = as.character(individualID)
-      )
-    ) |>
-    select(individualID, original_individualID, cohort)
-
-  matches_1.0 <- merge(dc, ampad_1.0)
-  stopifnot(length(unique(matches_1.0$individualID)) == nrow(matches_1.0))
-
-  cat(str_glue("Filling {sum(is.na(matches_1.0$individualID_AMPAD_1.0))} ",
-               "missing AMPAD-1.0 IDs in Diverse Cohorts\n"))
-
-  # This does nothing to the values that are already filled in, but replaces
-  # NAs with the 1.0 ID
-  matches_1.0$individualID_AMPAD_1.0 <- matches_1.0$original_individualID
-
-  matches_1.0 <- select(matches_1.0, -original_individualID)
-
-  col_order <- colnames(meta_all)
-
-  meta_all |>
-    # Replace column
-    select(-individualID_AMPAD_1.0) |>
-    merge(matches_1.0, all = TRUE, sort = FALSE) |>
-    # Restore original column order
-    select(all_of(col_order))
-}
-
-
-# Determine the value of ADoutcome for Diverse Cohorts data
+# Determine the value of ADoutcome for AMP-AD data
 #
 # ADoutcome is not changed for data not from Diverse Cohorts, and data from
 # Diverse Cohorts but contributed by Mayo.
@@ -950,13 +832,6 @@ fill_missing_ampad1.0_ids <- function(meta_all, spec) {
 # Returns:
 #   a single value for ADoutcome, one of "Control", "AD", "Other", or "missing or unknown"
 determineADoutcome <- function(.data, spec) {
-  # Don't make an ADoutcome value for non-Diverse Cohorts data, and don't change
-  # ADoutcome for samples coming from Mayo Clinic
-  if (.data[["study"]] != "AMP-AD_DiverseCohorts" |
-      .data[["derivedOutcomeBasedOnMayoDx"]] == TRUE) {
-    return(.data[["ADoutcome"]])
-  }
-
   high_Braak <- .data[["Braak_NFT"]] %in% c(spec$Braak_NFT$stage4,
                                             spec$Braak_NFT$stage5,
                                             spec$Braak_NFT$stage6)
@@ -970,7 +845,23 @@ determineADoutcome <- function(.data, spec) {
   low_amyCerad <- .data[["amyCerad"]] %in% c(spec$amyCerad$none,
                                              spec$amyCerad$sparse)
 
+  # Don't change ADoutcome for samples coming from Mayo Clinic (Diverse Cohorts
+  # only). Defining these variables allows the function to be used for other
+  # studies which don't have a MayoDx or ADoutcome field already and which would
+  # crash the case_when statement if we didn't adjust for that.
+  is_Mayo_dx <- rep(FALSE, length(high_Braak))
+  ADoutcome <- rep(spec$missing, length(high_Braak))
+
+  if ("study" %in% colnames(.data) &&
+      unique(.data[["study"]]) == "AMP-AD_DiverseCohorts") {
+    is_Mayo_dx <- .data[["derivedOutcomeBasedOnMayoDx"]]
+    ADoutcome <- .data[["ADoutcome"]]
+  }
+
   ADoutcome <- case_when(
+    # Leave Mayo diagnoses alone
+    is_Mayo_dx ~ ADoutcome,
+
     # AD: Braak IV-VI & Cerad Moderate or Frequent
     high_Braak & high_amyCerad ~ "AD",
 
@@ -987,7 +878,7 @@ determineADoutcome <- function(.data, spec) {
     .data[["Braak_NFT"]] == spec$missing |
       .data[["amyCerad"]] == spec$missing ~ spec$missing,
 
-    .default = .data[["ADoutcome"]]
+    .default = ADoutcome
   )
 
   return(ADoutcome)

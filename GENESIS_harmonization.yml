@@ -1,10 +1,38 @@
 default:
+
+  upload_synID: "syn64759869"
+
+  # Standardized values for string columns -------------------------------------
+
+  ## Meta-information ----------------------------------------------------------
+  # General variables that are used for multiple columns, plus a full list of
+  # required columns, some of which do not appear in this config.
+
   missing: "missing or unknown"
-  over90: "90+"
+  true_val: "True"
+  false_val: "False"
+
+  diagnosis_columns: ["AD", "BD", "Epilepsy", "HD", "LBD", "PD", "PSP", "SCZ",
+                      "Tumor", "Vascular", "MCI", "Dementia", "OTHER", "Control"]
+
+  required_columns:
+    ["individualID", "dataContributionGroup", "cohort", "sex", "race",
+     "isHispanic", "ageDeath", "PMI", "apoeGenotype", "apoe4Status", "amyCerad",
+     "amyAny", "amyThal", "amyA", "Braak_NFT", "bScore_NFT", "Braak_LB",
+     "bScore_LB", "study"]
+
+  boolean_values: &bool_val
+    true_val: "True"
+    false_val: "False"
+
+  ## Demographics --------------------------------------------------------------
 
   sex:
     female: "female"
     male: "male"
+
+  ageDeath:
+    over90: "90+"
 
   race:
     Amer_Ind: "American Indian or Alaska Native"
@@ -13,9 +41,9 @@ default:
     White: "White"
     other: "other"
 
-  isHispanic:
-    hisp_true: "True"
-    hisp_false: "False"
+  isHispanic: *bool_val
+
+  ## Pathology -----------------------------------------------------------------
 
   apoeGenotype:
     e2e2: "22"
@@ -83,6 +111,8 @@ default:
     stage3_4: "Moderate (Stage III-IV)"
     stage5_6: "High (Stage V-VI)"
 
+  ## Study information ---------------------------------------------------------
+
   dataContributionGroup:
     allen_institute: "Allen Institute"
     asap: "ASAP Collaborative Research Network"
@@ -117,6 +147,7 @@ default:
     mayo: "Mayo Clinic"
     msbb: "Mount Sinai Brain Bank"
     nki: "NKI/NYUGSOM"
+    nybb: "New York Brain Bank"
     qsbb: "Queen Square Brain Bank"
     ros: "ROS"
     sea_ad: "SEA-AD"

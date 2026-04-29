@@ -37,29 +37,27 @@ harmonize <- function(study_name, metadata, spec, harmonized_baseline = NULL,
     "ASAP" = harmonize_ASAP(metadata, spec),
     "BD2" = harmonize_BD2(metadata, spec),
     "AMP-AD_DiverseCohorts" = harmonize_Diverse_Cohorts(metadata, spec),
-    "MayoRNAseq" = harmonize_MayoRNAseq(metadata, spec),
     "MC-BrAD" = harmonize_MC_BrAD(metadata, spec),
     "MC_snRNA" = harmonize_MC_snRNA(metadata, spec),
     "McCarroll_SCZ" = harmonize_McCarroll_SCZ(metadata, spec),
     "McCarroll_HD" = harmonize_McCarroll_HD(metadata, spec),
     "MCMPS" = harmonize_MCMPS(metadata, spec),
-    "MSBB" = harmonize_MSBB(metadata, spec),
-    "NPS-AD" = harmonize_NPS_AD(metadata, extra_metadata, spec),
+    "MSBB" = harmonize_ADKP_studies(metadata, spec),
+    "NPS-AD" = harmonize_NPS_AD(metadata, spec),
     "ROSMAP" = harmonize_ROSMAP(metadata, spec),
     "SEA-AD" = harmonize_SEA_AD(metadata, extra_metadata, spec),
     "SMIB-AD" = harmonize_SMIB_AD(metadata, spec),
-    "MSBB_corrections" = harmonize_MSBB_corrections(metadata, spec), # TODO temporary
     .default = metadata
   )
 
   # Add any missing fields
-  missing_fields <- setdiff(expectedColumns, colnames(metadata))
+  missing_fields <- setdiff(spec$required_columns, colnames(metadata))
   for (field in missing_fields) {
     metadata[, field] <- spec$missing
   }
 
   # Don't fill NA values with "missing" in the ageDeath or PMI columns
-  cols_fill <- setdiff(expectedColumns, c("ageDeath", "PMI"))
+  cols_fill <- setdiff(spec$required_columns, c("ageDeath", "PMI"))
 
   metadata <- metadata |>
     mutate(
@@ -97,349 +95,237 @@ harmonize <- function(study_name, metadata, spec, harmonized_baseline = NULL,
 
   # Put harmonized fields first in the data frame
   metadata <- metadata |>
-    select(all_of(expectedColumns), !all_of(expectedColumns))
+    select(all_of(spec$required_columns), !all_of(spec$required_columns))
 
   return(metadata)
 }
 
 
-# Harmonize Diverse Cohorts metadata
+# Harmonize ADKP Harmonization Project studies (generic)
 #
-# Makes minor edits to the Diverse Cohorts individual metadata file, which was
-# previously harmonized using a very similar data dictionary to what is needed
-# for GENESIS. Source metadata file: syn51757646 (version 21) on Synapse.
+# Harmonize metadata from the ADKP Harmonization Project, which contains
+# metadata files that have been harmonized with each other and de-duplicated.
+# The data dictionary for these files is very similar to GENESIS, so only minor
+# changes are needed.
 #
-# Modifications needed for version 21:
+# This function works on every file from the ADKP Harmonization project, but
+# does not handle diagnosis because it is not a harmonized field in that study.
+# Each individual study should have its own function that calls this one, and
+# then harmonizes diagnosis.
+#
+# Sources: all files in the syn73713763 folder on Synapse
 #   * Rename columns:
 #     * `Braak` => `Braak_NFT`
 #     * `bScore` => `bScore_NFT`
-#   * Change `ageDeath` and `PMI` value "missing or unknown" to `NA`
-#   * Change `PMI` to a numeric column
-#   * Rename `isHispanic` values from ["TRUE", "FALSE"] to ["True", "False"]
-#   * Update `dataContributionGroup` and `cohort` to conform to the data dictionary
+#   * Alter column values:
+#     * `race` "Other" -> "other"
+#     * `race` "Native Hawaiian or Other Pacific Islander" -> "other".
+#         * There are only 2 individuals with this value and the GENESIS
+#           dictionary does not have a separate category for them.
+#     * `cohort` "Mayo Clinic Brain Bank" -> "Mayo Clinic"
+#     * `cohort` "University of Kentucky" -> "Mayo Clinic"
+#
+# Note: individual "6160" is "White" in NPS-AD, un-harmonized MSBB 1.0, and
+# un-harmonized Diverse cohorts, but "other" in corrected MSBB data. Because of
+# the consensus of the older data with NPS-AD, for GENESIS we ignore the
+# corrected MSBB data and leave the race as "White".
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
 #     are variables and rows are individuals.
 #   spec - a `config` object describing the standardized values for each field,
-#     as defined by this project's `GENESIS_harmonization.yml` file
+#      as defined by this project's `GENESIS_harmonization.yml` file
 #
 # Returns:
 #   a `data.frame` with all relevant fields harmonized to the GENESIS data
 #   dictionary. Columns not defined in the data dictionary are left as-is.
-#
-harmonize_Diverse_Cohorts <- function(metadata, spec) {
+harmonize_ADKP_studies <- function(metadata, spec) {
   metadata |>
     dplyr::rename(
       Braak_NFT = Braak,
       bScore_NFT = bScore
     ) |>
-    dplyr::mutate(
-      ageDeath = censor_ages(ageDeath, spec),
-      PMI = ifelse(PMI == spec$missing, NA,
-                   suppressWarnings(as.numeric(PMI))),
+    mutate(
+      race = ifelse(race %in% c("Other", "Native Hawaiian or Other Pacific Islander"),
+                    spec$race$other,
+                    race),
+      cohort = ifelse(cohort %in% c("Mayo Clinic Brain Bank", "University of Kentucky"),
+                      spec$cohort$mayo,
+                      cohort),
+      ### Manual fix to individual 6160 ###
+      race = ifelse(cohort == spec$cohort$msbb & grepl("6160", individualID),
+                    "White", race)
+      ###
+    )
+}
+
+
+# Harmonize Diverse Cohorts metadata
+#
+# Calls harmonize_ADKP_studies and then creates an `AD` diagnosis column that is
+# based on the ADoutcome values. "AD" is "True", "Control" and "Other" are
+# "False", and missing values are "missing or unknown".
+#
+# Source metadata: syn73713769 (version 2) on Synapse
+harmonize_Diverse_Cohorts <- function(metadata, spec) {
+  harmonize_ADKP_studies(metadata, spec) |>
+    mutate(AD = case_match(ADoutcome,
+                           "AD" ~ spec$true_val,
+                           c("Control", "Other") ~ spec$false_val,
+                           .default = spec$missing),
+           OTHER = case_match(ADoutcome,
+                              "Other" ~ spec$true_val,
+                              c("Control", "AD") ~ spec$false_val,
+                              .default = spec$missing),
+           Control = case_match(ADoutcome,
+                                "Control" ~ spec$true_val,
+                                c("AD", "Other") ~ spec$false_val,
+                                .default = spec$missing))
+}
+
+
+# Harmonize MC_snRNA data
+#
+# Calls harmonize_ADKP_studies and then creates binary `AD` and `Control`
+# diagnosis columns that are based on the `diagnosis` column. This study has no
+# non-missing amyCerad values and only a few non-missing Thal values, so
+# diagnosis cannot be determined based on pathology. The diagnosis supplied in
+# the `diagnosis` field is used instead.
+#
+# Source file: syn73713776 (version 2) on Synapse
+harmonize_MC_snRNA <- function(metadata, spec) {
+  harmonize_ADKP_studies(metadata, spec) |>
+    # There are no missing values in the diagnosis field
+    mutate(AD = ifelse(diagnosis == "Alzheimer Disease",
+                       spec$true_val, spec$false_val),
+           Control = ifelse(diagnosis == "Control",
+                            spec$true_val, spec$false_val))
+}
+
+# Harmonize MC-BrAD data
+#
+# Calls harmonize_ADKP_studies and then creates binary `PSP` and `Control`
+# diagnosis columns that are based on the `diagnosis` field. The study
+# documentation verified that control samples have no diagnosis of any of the
+# common neuropathological disorders like AD, PD, HD, etc.
+#
+# Source file: syn73713775 (version 2) on Synapse
+harmonize_MC_BrAD <- function(metadata, spec) {
+  harmonize_ADKP_studies(metadata, spec) |>
+    # There are no missing values in the diagnosis column
+    mutate(PSP = ifelse(diagnosis == "progressive supranuclear palsy",
+                       spec$true_val, spec$false_val),
+           Control = ifelse(diagnosis == "control",
+                            spec$true_val, spec$false_val))
+}
+
+# Harmonize MCMPS data
+#
+# Calls harmonize_ADKP_studies and then creates binary `Epilepsy` and `Tumor`
+# columns based on the `surgeryReason` field. This study is unique in that the
+# samples were taken from living tissue during surgery, so the surgury reason is
+# used as the diagnosis.
+#
+# There are Braak scores but no Cerad and very few Thal, which is insufficient
+# to add a pathology-based AD diagnosis. The `diagnosis` field is also empty,
+# and the study description does not mention other disorders, so it is assumed
+# that these patients did not have AD or other neuropathological diseases.
+#
+# Source file: syn73713777 (version 2) on Synapse
+harmonize_MCMPS <- function(metadata, spec) {
+  harmonize_ADKP_studies(metadata, spec) |>
+    # There are no missing values in this field
+    mutate(Epilepsy = ifelse(surgeryReason == "Epilepsy",
+                             spec$true_val, spec$false_val),
+           Tumor = ifelse(surgeryReason == "Tumor",
+                          spec$true_val, spec$false_val))
+}
+
+
+# Harmonize NPS-AD metadata
+#
+# Harmonize NPS-AD metadata as with all the other ADKP studies, but fill `race`
+# and `isHispanic` with `geneticAncestry` and `geneticAncestry_isHispanic` when
+# those values are non-missing.
+#
+# Additionally, we convert the PD, FTD, MS, SCZ, BD, PTSD, ADHD, and OCD
+# diagnosis columns to binary string columns, and create a binary `AD` diagnosis
+# column based on ADoutcome.
+#
+# Source file: syn73713770 (version 1) on Synapse
+harmonize_NPS_AD <- function(metadata, spec) {
+  harmonize_ADKP_studies(metadata, spec) |>
+    mutate(
+      race = ifelse(is.na(geneticAncestry), race, geneticAncestry),
+      isHispanic = ifelse(is.na(geneticAncestry_isHispanic),
+                          isHispanic,
+                          geneticAncestry_isHispanic),
+      # Fix un-harmonized values from geneticAncestry_isHispanic
       isHispanic = case_match(
-        as.character(isHispanic),
-        "TRUE" ~ spec$isHispanic$hisp_true,
-        "FALSE" ~ spec$isHispanic$hisp_false,
-        .default = as.character(isHispanic)
-      ),
-      dataContributionGroup = case_match(
-        dataContributionGroup,
-        "Columbia" ~ spec$dataContributionGroup$columbia,
-        "MSSM" ~ spec$dataContributionGroup$mssm,
-        "Rush" ~ spec$dataContributionGroup$rush,
-        "Emory" ~ spec$dataContributionGroup$emory,
-        "Mayo" ~ spec$dataContributionGroup$mayo,
-        .default = dataContributionGroup
-      ),
-      cohort = case_match(
-        cohort,
-        "Banner" ~ spec$cohort$banner,
-        "Mt Sinai Brain Bank" ~ spec$cohort$msbb,
-        .default = cohort
-      )
-    )
-}
-
-
-# Harmonize MayoRNAseq metadata
-#
-# Modifies the original MayoRNAseq individual metadata to conform to the GENESIS
-# data dictionary. This file is not used directly by any GENESIS studies but is
-# instead used to fill in missing information in GENESIS metadata that uses
-# these samples. Source metadata file: syn23277389 (version 7) on Synapse.
-#
-# Modifications needed for version 7:
-#   * Rename columns:
-#     * `pmi` => `PMI`
-#     * `ethnicity` => `isHispanic`
-#     * `CERAD` => `amyCerad`
-#     * `Thal` => `amyThal`
-#     * `Braak` => `Braak_NFT`
-#   * Change `ageDeath` value "90_or_over" to "90+"
-#   * Rename `isHispanic` value "Caucasian" to "False"
-#   * Replace `amyThal` value "0" with "None", and add "Phase" in front of other
-#       `amyThal` numerical values
-#   * Convert `Braak_NFT` value "0" with "None", and convert other numerical
-#       `Braak_NFT` values to "Stage " + a Roman numeral
-#   * Add columns `dataContributionGroup` = "Mayo" and `cohort` = "Mayo Clinic"
-#
-# NOTE: There is one individual with an incorrect `race` value, which is
-# corrected manually here based on updated information from Diverse Cohorts.
-#
-# Arguments:
-#   metadata - a `data.frame` of metadata from the source metadata file. Columns
-#     are variables and rows are individuals.
-#   spec - a `config` object describing the standardized values for each field,
-#     as defined by this project's `GENESIS_harmonization.yml` file
-#
-# Returns:
-#   a `data.frame` with all relevant fields harmonized to the GENESIS data
-#   dictionary. Columns not defined in the data dictionary are left as-is.
-#
-harmonize_MayoRNAseq <- function(metadata, spec) {
-  metadata |>
-    rename(
-      PMI = pmi,
-      isHispanic = ethnicity,
-      amyCerad = CERAD,
-      amyThal = Thal,
-      Braak_NFT = Braak
-    ) |>
-    mutate(
-      ageDeath = censor_ages(ageDeath, spec),
-      isHispanic = ifelse(isHispanic == "Caucasian",
-                          spec$isHispanic$hisp_false,
-                          isHispanic),
-      ## Manual correction
-      race = ifelse(individualID == "11387", spec$race$other, race),
-      ##
-      # Note: all amyCerad values are NA in this data set and will get filled
-      # in with "missing or unknown" in the main harmonize() function
-      amyThal = case_match(amyThal,
-        NA ~ spec$missing,
-        0 ~ spec$amyThal$none,
-        .default = paste("Phase", amyThal)
-      ),
-      Braak_NFT = to_Braak_stage(floor(Braak_NFT), spec),
-      cohort = spec$cohort$mayo,
-      dataContributionGroup = spec$dataContributionGroup$mayo,
-    )
-}
-
-
-# Harmonize MSBB metadata
-#
-# Modifies the original MSBB individual metadata to conform to the GENESIS
-# data dictionary. This file is not used directly by any GENESIS studies but is
-# instead used to fill in missing information in GENESIS metadata that uses
-# these samples. Source metadata file: syn6101474 (version 10) on Synapse.
-#
-# Modifications needed for version 10:
-#   * Rename columns:
-#     * `pmi` => `PMI`
-#     * `ethnicity` => `isHispanic`
-#     * `CERAD` => `amyCerad`
-#     * `Braak` => `Braak_NFT`
-#   * Convert `PMI` from minutes to hours
-#   * Change `isHispanic` and `race` values to conform to the data dictionary
-#   * Add `dataContributionGroup` = "Mount Sinai School of Medicine",
-#     `cohort` = "Mount Sinai Brain Bank", and `study` = "MSBB"
-#
-# Arguments:
-#   metadata - a `data.frame` of metadata from the source metadata file. Columns
-#     are variables and rows are individuals.
-#   spec - a `config` object describing the standardized values for each field,
-#     as defined by this project's `GENESIS_harmonization.yml` file
-#
-# Returns:
-#   a `data.frame` with all relevant fields harmonized to the GENESIS data
-#   dictionary. Columns not defined in the data dictionary are left as-is.
-#
-harmonize_MSBB <- function(metadata, spec) {
-  metadata |>
-    rename(
-      PMI = pmi,
-      isHispanic = ethnicity,
-      amyCerad = CERAD,
-      Braak_NFT = Braak
-    ) |>
-    mutate(
-      PMI = PMI / 60, # PMI is in minutes
-      isHispanic = case_match(isHispanic,
-        c("A", "B", "O", "W") ~ spec$isHispanic$hisp_false,
-        "H" ~ spec$isHispanic$hisp_true,
-        "U" ~ spec$missing,
+        isHispanic,
+        "Hispanic or Latino" ~ spec$isHispanic$true_val,
+        "Not Hispanic or Latino" ~ spec$isHispanic$false_val,
         .default = isHispanic
       ),
-      race = case_match(race,
-        "A" ~ spec$race$Asian,
-        "B" ~ spec$race$Black,
-        "H" ~ spec$race$other,
-        "W" ~ spec$race$White,
-        "O" ~ spec$race$other,
-        "U" ~ spec$missing,
-        .default = race
-      ),
-      amyCerad = case_match(amyCerad,
-        1 ~ spec$amyCerad$none,
-        2 ~ spec$amyCerad$frequent,
-        3 ~ spec$amyCerad$moderate,
-        4 ~ spec$amyCerad$sparse,
-        .default = as.character(amyCerad)
-      ),
-      amyThal = spec$missing,
-      Braak_NFT = to_Braak_stage(floor(Braak_NFT), spec),
-      dataContributionGroup = spec$dataContributionGroup$mssm,
-      cohort = spec$cohort$msbb
-    )
-}
-
-
-# Note: individual "6160" is "White" in NPS-AD, MSBB 1.0, and Diverse cohorts,
-# but "other" in MSBB corrections. Because of the consensus of the older data
-# with NPS-AD, in this case we ignore the corrected MSBB data and leave the race
-# as "White".
-harmonize_MSBB_corrections <- function(metadata, spec) {
-  metadata |>
-    rename(
-      ageDeath = Age,
-      race = RaceLabel,
-      sex = SexLabel,
-      PMI = `PMI (min)`,
-      amyCerad = CERAD_1,
-      apoeGenotype = ApoE,
-      Braak_NFT = `B&B Alz`
-    ) |>
-    mutate(
-      ageDeath = censor_ages(ageDeath, spec),
-      PMI = PMI / 60, # PMI is in minutes
-      sex = tolower(sex),
-      race = str_replace(race, " \\(nonHispanic\\)", ""),
-      isHispanic = case_match(race,
-        c("Asian", "Black", "White", "Other") ~ spec$isHispanic$hisp_false,
-        "Hispanic" ~ spec$isHispanic$hisp_true,
-        .default = race
-      ),
-      race = case_match(race,
-        "Asian" ~ spec$race$Asian,
-        "Black" ~ spec$race$Black,
-        "Hispanic" ~ spec$race$other,
-        "White" ~ spec$race$White,
-        "Other" ~ spec$race$other,
-        .default = race
-      ),
-      ## Manual change as noted above
-      race = ifelse(individualID == "6160", "White", race),
-      ##
-      apoeGenotype = str_replace(apoeGenotype, "/", ""),
-      amyCerad = case_match(amyCerad,
-        0 ~ spec$amyCerad$none,
-        1 ~ spec$amyCerad$sparse,
-        2 ~ spec$amyCerad$moderate,
-        3 ~ spec$amyCerad$frequent,
-        .default = as.character(amyCerad)
-      ),
-      amyThal = spec$missing,
-      Braak_NFT = to_Braak_stage(Braak_NFT, spec),
-      cohort = spec$cohort$msbb,
-      dataContributionGroup = spec$dataContributionGroup$mssm
+      ADoutcome = determineADoutcome(.data, spec),
+      AD = case_match(ADoutcome,
+                      "AD" ~ spec$true_val,
+                      c("Control", "Other") ~ spec$false_val,
+                      .default = spec$missing),
+      OTHER = case_match(ADoutcome,
+                         "Other" ~ spec$true_val,
+                         c("Control", "AD") ~ spec$false_val,
+                         .default = spec$missing),
+      # There are a large number of NA values, which we convert to "missing or unknown"
+      across(c(PD, FTD, MS, SCZ, BD, PTSD, ADHD, OCD),
+             case_match(.x,
+                        1 ~ spec$true_val,
+                        0 ~ spec$false_val,
+                        .default = spec$missing))
     )
 }
 
 
 # Harmonize ROSMAP metadata
 #
-# Modifies the ROSMAP individual metadata file to conform to the GENESIS data
-# dictionary. Source metadata file: syn3191087 (version 11) on Synapse. The
-# clinical codebook describing the meanings of values in each column can be
-# found at syn3191090 on Synapse.
+# TODO
 #
-# Modifications needed for version 11:
-#   * Rename multiple columns:
-#     * `spanish` => `isHispanic`
-#     * `age_death` => `ageDeath`
-#     * `pmi` => `PMI`
-#     * `msex` => `sex`
-#     * `apoe_genotype` => `apoeGenotype`
-#     * `ceradsc` => `amyCerad`
-#     * `braaksc` => `Braak_NFT`
-#     * `Study` => `cohort`
-#   * Convert `ageDeath` empty string values to `NA`
-#   * Convert `sex` values [0, 1] to ["female", "male"]
-#   * Convert `race` numerical values to values in data dictionary
-#     * NOTE: "Hawaiian / Pacific Islanders" are categorized as "other" for this
-#       effort as there are only 2 of them and the GENESIS dictionary does not
-#       have a separate category for them.
-#   * Convert `isHispanic` values [1, 2] to ["True", "False"]
-#   * Convert `Braak_NFT` numerical values to "None" or "Stage " + Roman numeral
-#   * Convert `amyCerad` numerical values to values in data dictionary
-#   * Add `dataContributionGroup` = "Rush" and `study` = "ROSMAP"
-#
-# NOTE: There is one individual with an incorrect value for `isHispanic`, which
-# is manually corrected here based on updated data from Diverse Cohorts.
-#
-# Arguments:
-#   metadata - a `data.frame` of metadata from the source metadata file. Columns
-#     are variables and rows are individuals.
-#   spec - a `config` object describing the standardized values for each field,
-#     as defined by this project's `GENESIS_harmonization.yml` file
-#
-# Returns:
-#   a `data.frame` with all relevant fields harmonized to the GENESIS data
-#   dictionary. Columns not defined in the data dictionary are left as-is.
-#
+# Source file: syn73713768 (version 1) on Synapse
 harmonize_ROSMAP <- function(metadata, spec) {
-  metadata |>
-    dplyr::rename(
-      isHispanic = spanish,
-      ageDeath = age_death,
-      PMI = pmi,
-      sex = msex,
-      apoeGenotype = apoe_genotype,
-      amyCerad = ceradsc,
-      Braak_NFT = braaksc,
-      cohort = Study
-    ) |>
-    dplyr::mutate(
-      sex = case_match(sex,
-        1 ~ spec$sex$male,
-        0 ~ spec$sex$female,
-        .default = as.character(sex)
-      ),
-      ageDeath = censor_ages(ageDeath, spec),
-      race = case_match(race,
-        1 ~ spec$race$White,
-        2 ~ spec$race$Black,
-        3 ~ spec$race$Amer_Ind,
-        4 ~ spec$race$other, # Hawaiian / Pacific Islanders
-        5 ~ spec$race$Asian,
-        6 ~ spec$race$other,
-        7 ~ spec$missing,
-        .default = as.character(race)
-      ),
-      isHispanic = case_match(isHispanic,
-        1 ~ spec$isHispanic$hisp_true,
-        2 ~ spec$isHispanic$hisp_false,
-        .default = as.character(isHispanic)
-      ),
-      # manual correction
-      isHispanic = ifelse(individualID == "R8412417",
-                          spec$isHispanic$hisp_false,
-                          isHispanic),
-      apoeGenotype = ifelse(is.na(apoeGenotype), spec$missing,
-                            as.character(apoeGenotype)),
-      Braak_NFT = to_Braak_stage(Braak_NFT, spec),
-      amyCerad = case_match(amyCerad,
-        1 ~ spec$amyCerad$frequent,
-        2 ~ spec$amyCerad$moderate,
-        3 ~ spec$amyCerad$sparse,
-        4 ~ spec$amyCerad$none,
-        .default = as.character(amyCerad)
-      ),
-      dataContributionGroup = spec$dataContributionGroup$rush,
+  harmonize_ADKP_studies(metadata, spec) |>
+    mutate(
+      ADoutcome = determineADoutcome(.data, spec), # TODO, look at cogdx, dcfdx_lv
+      AD = case_match(ADoutcome,
+                           "AD" ~ spec$true_val,
+                           c("Control", "Other") ~ spec$false_val,
+                           .default = spec$missing),
+      OTHER = case_match(ADoutcome,
+                         "Other" ~ spec$true_val,
+                         c("Control", "AD") ~ spec$false_val,
+                         .default = spec$missing),
+      Control = case_match(ADoutcome,
+                           "Control" ~ spec$true_val,
+                           c("AD", "Other" ~ spec$false_val),
+                           .default = spec$missing)
     )
+}
+
+
+# Harmonize SMIB-AD metadata
+#
+# Calls harmonize_ADKP_studies and then creates binary `AD` and `Control`
+# diagnosis columns that are based on the `diagnosis` column. This study has no
+# non-missing amyCerad values and only a few non-missing Thal values, so
+# diagnosis cannot be determined based on pathology. The diagnosis supplied in
+# the `diagnosis` field is used instead.
+#
+# Source file: syn73713779 (version 1) on Synapse
+harmonize_SMIB_AD <- function(metadata, spec) {
+  harmonize_ADKP_studies(metadata, spec) |>
+    mutate(AD = ifelse(diagnosis == "Alzheimer Disease",
+                       spec$true_val, spec$false_val),
+           Control = ifelse(diagnosis == "no cognitive impairment",
+                            spec$true_val, spec$false_val))
 }
 
 
@@ -522,8 +408,8 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
     ) |>
     dplyr::mutate(
       isHispanic = case_match(isHispanic,
-        "No" ~ spec$isHispanic$hisp_false,
-        "Yes" ~ spec$isHispanic$hisp_true,
+        "No" ~ spec$isHispanic$false_val,
+        "Yes" ~ spec$isHispanic$true_val,
         "Unknown" ~ spec$missing,
         .default = isHispanic
       ),
@@ -545,325 +431,30 @@ harmonize_SEA_AD <- function(metadata_synapse, metadata_allen, spec) {
       Braak_NFT = to_Braak_stage(Braak_NFT, spec),
       cohort = spec$cohort$sea_ad,
       dataContributionGroup = spec$dataContributionGroup$allen_institute,
-    )
-}
-
-
-# Harmonize NPS-AD / GEN-A1 metadata
-#
-# Modifies the NPS-AD individual metadata file to conform to the GENESIS data
-# dictionary. A separate neuropathology file needs to be merged with the
-# individual metadata before harmonization to obtain Braak scores. Source
-# metadata files: syn55251012 (version 4, individual metadata) and syn55251003
-# (version 1, neuropathology data) on Synapse.
-#
-# Note: Cerad mapping is defined in the NPS-AD data dictionary (syn57373364).
-#
-# Note: Ages are listed as "89+" in v4 of NPS-AD. All of these values should be
-# replaced with "90+" or "89", which can be filled in from Diverse Cohorts,
-# AMP-AD 1.0 data, or the MSBB corrections data. The age column will be fixed in
-# a future version of the NPS-AD metadata.
-#
-# Note: Even after de-duplication, the "race" and "isHispanic" columns will have
-# values that disagree with AMP-AD 1.0 and Diverse Cohorts data. NPS-AD
-# determined these values algorithmically or by re-processing data and wishes
-# these values to remain as-is, so we do not alter them.
-#
-# Modifications needed for version 4:
-#   * Merge neuropathology data with individual metadata
-#   * Rename columns:
-#     * `ethnicity` => `isHispanic`
-#     * `CERAD` => `amyCerad`
-#     * `BRAAK_AD` => `Braak_NFT`
-#     * `race` => `geneticAncestry` # TODO
-#   * Fix two values in `diverseCohortsIndividualIDFormat` to match the correct
-#     format in Diverse Cohorts
-#   * Manually correct `ageDeath` column as described above
-#   * Convert `PMI` values from minutes to hours
-#   * Convert `isHispanic` values to "True" or "False"
-#   * Convert Braak_NFT numerical values to Roman numerals
-#   * Convert `amyCerad` numerical values to values in data dictionary
-#   * Fix `cohort` values to match data dictionary
-#   * Add the `dataContributionGroup` column with values appropriate to each
-#     cohort.
-#
-# Arguments:
-#   metadata - a `data.frame` of metadata from the source metadata file. Columns
-#     are variables and rows are individuals.
-#   neuropath - a `data.frame` of neuropathology data for each individual, which
-#     can be matched to `metadata` by `individualID`. Columns are variables and
-#     rows are individuals.
-#   spec - a `config` object describing the standardized values for each field,
-#     as defined by this project's `GENESIS_harmonization.yml` file
-#
-# Returns:
-#   a `data.frame` with all relevant fields harmonized to the GENESIS data
-#   dictionary. Columns not defined in the data dictionary are left as-is.
-#
-harmonize_NPS_AD <- function(metadata, neuropath, spec) {
-  metadata <- metadata |>
-    # Braak is all NA in the individual metadata file but has values in the
-    # neuropath file
-    select(-Braak) |>
-    merge(neuropath)
-
-  metadata |>
-    select(-Component) |>
-    rename(
-      #geneticAncestry = race, # TODO
-      isHispanic = ethnicity,
-      amyCerad = CERAD,
-      Braak_NFT = BRAAK_AD
-    ) |>
-    mutate(
-      # Fix to allow comparison to Diverse Cohorts
-      diverseCohortsIndividualIDFormat = case_match(
-        diverseCohortsIndividualIDFormat,
-        29637 ~ "29637_MSSM",
-        29582 ~ "29582_MSSM",
-        .default = as.character(diverseCohortsIndividualIDFormat)
+      ADoutcome = determineADoutcome(.data, spec), # TODO
+      AD = case_match(
+        ADoutcome,
+        "AD" ~ spec$true_val,
+        c("Control", "Other") ~ spec$false_val,
+        spec$missing ~ spec$false_val, # All samples with missing Braak/Cerad are reference samples
+        .default = spec$missing # TODO look at "diagnosis", "Cognitive.status", "Consensus.clinical.diagnosis", "Lewy.body.disease.pathology", "LATE.NC.stage"
       ),
-      ## Manual corrections
-      # Setting these to NA will force these values to be filled in by Diverse
-      # Cohorts / AMP-AD 1.0 data during de-duplication
-      ageDeath = ifelse(ageDeath == "89+", NA, ageDeath),
-      ##
-      PMI = PMI / 60,
-      pmiUnits = "hours",
-      isHispanic = case_match(isHispanic,
-        "Hispanic or Latino" ~ spec$isHispanic$hisp_true,
-        "Not Hispanic or Latino" ~ spec$isHispanic$hisp_false,
-        .default = isHispanic
+      OTHER = case_match(
+        ADoutcome,
+        "Other" ~ spec$true_val,
+        c("Control", "AD") ~ spec$false_val,
+        spec$missing ~ spec$false_val, # All samples with missing Braak/Cerad are reference samples
+        .default = spec$missing # TODO look at "diagnosis", "Cognitive.status", "Consensus.clinical.diagnosis", "Lewy.body.disease.pathology", "LATE.NC.stage"
       ),
-      # Cerad mapping per NPS-AD data dictionary (syn57373364)
-      amyCerad = case_match(amyCerad,
-        1 ~ spec$amyCerad$none,
-        2 ~ spec$amyCerad$sparse,
-        3 ~ spec$amyCerad$moderate,
-        4 ~ spec$amyCerad$frequent,
-        .default = as.character(amyCerad)
-      ),
-      Braak_NFT = to_Braak_stage(Braak_NFT, spec),
-      cohort = ifelse(cohort == "MSBB", spec$cohort$msbb, cohort),
-      dataContributionGroup = case_match(cohort,
-        spec$cohort$msbb ~ spec$dataContributionGroup$mssm,
-        spec$cohort$hbcc ~ spec$dataContributionGroup$nimh,
-        c(spec$cohort$ros, spec$cohort$map) ~ spec$dataContributionGroup$rush,
-        "ROSMAP" ~ spec$dataContributionGroup$rush,
-        .default = ""
-      )
-    )
-}
-
-
-# Harmonize SMIB-AD / GEN-A9 metadata
-#
-# Modifies the SMIB-AD individual metadata file to conform to the GENESIS data
-# dictionary. Source metadata file: syn22432749 (version 1) on Synapse. Note:
-# CERAD values are coded using ROSMAP's system.
-#
-# Modifications needed for version 1:
-#   * Rename columns:
-#     * `pmi` => `PMI`
-#     * `ethnicity` => `isHispanic`
-#     * `CERAD` => `amyCerad`
-#     * `Braak` => `Braak_NFT`
-#   * Censor `ageDeath` values over 90
-#   * Change `race` values from "European" to "White"
-#   * Change `isHispanic` values from "European" to "False"
-#   * Convert Braak_NFT numerical values to Roman numerals
-#   * Convert `amyCerad` numerical values to values in data dictionary
-#   * Add a `cohort` column with either "SMRI" or "Banner"
-#   * Add a `dataContributionGroup` column with values for Stanley and Banner
-#
-# Arguments:
-#   metadata - a `data.frame` of metadata from the source metadata file. Columns
-#     are variables and rows are individuals.
-#   spec - a `config` object describing the standardized values for each field,
-#     as defined by this project's `GENESIS_harmonization.yml` file
-#
-# Returns:
-#   a `data.frame` with all relevant fields harmonized to the GENESIS data
-#   dictionary. Columns not defined in the data dictionary are left as-is.
-#
-harmonize_SMIB_AD <- function(metadata, spec) {
-  metadata |>
-    rename(
-      PMI = pmi,
-      isHispanic = ethnicity,
-      amyCerad = CERAD,
-      Braak_NFT = Braak
-    ) |>
-    mutate(
-      ageDeath = censor_ages(ageDeath, spec),
-      race = spec$race$White,
-      isHispanic = spec$isHispanic$hisp_false,
-      Braak_NFT = to_Braak_stage(Braak_NFT, spec),
-      amyCerad = case_match(amyCerad,
-        1 ~ spec$amyCerad$none,
-        2 ~ spec$amyCerad$sparse,
-        4 ~ spec$amyCerad$frequent,
-        .default = as.character(amyCerad)
-      ),
-      cohort = ifelse(is.na(individualIdSource),
-                      spec$cohort$smri,
-                      spec$cohort$banner),
-      dataContributionGroup = ifelse(cohort == spec$cohort$smri,
-                                     spec$dataContributionGroup$stanley,
-                                     spec$dataContributionGroup$banner)
-    )
-}
-
-
-# Harmonize MCMPS / GEN-A10 metadata
-#
-# Modifies the MCMPS individual metadata file to conform to the GENESIS data
-# dictionary. Source metadata file: syn25891193 (version 1) on Synapse. Note:
-# these samples come from living tissue and do not have a value for `ageDeath`
-# or `PMI`.
-#
-# Modifications needed for version 1:
-#   * Rename columns:
-#     * `pmi` => `PMI`
-#     * `ethnicity` => `isHispanic`
-#     * `CERAD` => `amyCerad`
-#     * `Braak` => `Braak_NFT`
-#   * Trim extra spaces from `race` values
-#   * Trim extra spaces from `isHispanic` values and convert to True/False
-#   * Add a `cohort` column containing "Mayo Clinic"
-#   * Add a `dataContributionGroup` column containing "Mayo"
-#
-# Arguments:
-#   metadata - a `data.frame` of metadata from the source metadata file. Columns
-#     are variables and rows are individuals.
-#   spec - a `config` object describing the standardized values for each field,
-#     as defined by this project's `GENESIS_harmonization.yml` file
-#
-# Returns:
-#   a `data.frame` with all relevant fields harmonized to the GENESIS data
-#   dictionary. Columns not defined in the data dictionary are left as-is.
-#
-harmonize_MCMPS <- function(metadata, spec) {
-  metadata |>
-    rename(
-      PMI = pmi,
-      isHispanic = ethnicity,
-      amyCerad = CERAD,
-      Braak_NFT = Braak
-    ) |>
-    mutate(
-      race = str_trim(race),
-      isHispanic = str_trim(isHispanic),
-      isHispanic = case_match(isHispanic,
-        "Hispanic or Latino" ~ spec$isHispanic$hisp_true,
-        "Not Hispanic or Latino" ~ spec$isHispanic$hisp_false,
-        "Middle Eastern" ~ spec$isHispanic$hisp_false,
-        .default = isHispanic
-      ),
-      cohort = spec$cohort$mayo,
-      dataContributionGroup = spec$dataContributionGroup$mayo
-    )
-}
-
-
-# Harmonize MC_snRNA / GEN-A11 metadata
-#
-# Modifies the MC_snRNA individual metadata file to conform to the GENESIS data
-# dictionary. Source metadata file: syn31563038 (version 1) on Synapse. This
-# data set has some sample overlap with AMP-AD 1.0 Mayo metadata and Diverse
-# Cohorts metadata. There are some missing values in this data set that exist in
-# these data sets, so those get pulled in in the main harmonization function.
-#
-# Modifications needed for version 1:
-#   * Rename columns:
-#     * `pmi` => `PMI`
-#     * `ethnicity` => `isHispanic`
-#     * `CERAD` => `amyCerad`
-#     * `Braak` => `Braak_NFT`
-#   * Change `ageDeath` values of "90_or_over" to "90+"
-#   * Change `isHispanic` values from "Caucasian" to "False"
-#   * Round numerical `Braak_NFT` values down and convert to Roman numerals
-#   * Add a `cohort` column containing "Mayo Clinic"
-#   * Add a `dataContributionGroup` column containing "Mayo"
-#
-# Arguments:
-#   metadata - a `data.frame` of metadata from the source metadata file. Columns
-#     are variables and rows are individuals.
-#   spec - a `config` object describing the standardized values for each field,
-#     as defined by this project's `GENESIS_harmonization.yml` file
-#
-# Returns:
-#   a `data.frame` with all relevant fields harmonized to the GENESIS data
-#   dictionary. Columns not defined in the data dictionary are left as-is.
-#
-harmonize_MC_snRNA <- function(metadata, spec) {
-  metadata |>
-    rename(
-      PMI = pmi,
-      isHispanic = ethnicity,
-      amyCerad = CERAD,
-      Braak_NFT = Braak
-    ) |>
-    mutate(
-      ageDeath = censor_ages(ageDeath, spec),
-      isHispanic = spec$isHispanic$hisp_false,
-      Braak_NFT = to_Braak_stage(floor(Braak_NFT), spec),
-      dataContributionGroup = spec$dataContributionGroup$mayo,
-      cohort = spec$cohort$mayo
-    )
-}
-
-
-# Harmonize MC-BrAD / GEN-A12 metadata
-#
-# Modifies the MC-BrAD individual metadata file to conform to the GENESIS data
-# dictionary. Source metadata file: syn51401700 (version 2) on Synapse. This
-# data set has some sample overlap with AMP-AD 1.0 Mayo metadata and Diverse
-# Cohorts metadata. There are some missing values in this data set that exist in
-# these data sets, so those get pulled in in the main harmonization function.
-#
-# Modifications needed for version 2:
-#   * Rename columns:
-#     * `pmi` => `PMI`
-#     * `ethnicity` => `isHispanic`
-#     * `CERAD` => `amyCerad`
-#     * `Thal` => `amyThal`
-#     * `Braak` => `Braak_NFT`
-#   * Change `ageDeath` values of "90_or_over" to "90+"
-#   * Round numerical `Braak_NFT` values down and convert to Roman numerals
-#   * Convert `amyThal` values to conform to data dictionary
-#   * Add a `cohort` column containing "Mayo Clinic"
-#   * Add a `dataContributionGroup` column containing "Mayo"
-#
-# Arguments:
-#   metadata - a `data.frame` of metadata from the source metadata file. Columns
-#     are variables and rows are individuals.
-#   spec - a `config` object describing the standardized values for each field,
-#     as defined by this project's `GENESIS_harmonization.yml` file
-#
-# Returns:
-#   a `data.frame` with all relevant fields harmonized to the GENESIS data
-#   dictionary. Columns not defined in the data dictionary are left as-is.
-#
-harmonize_MC_BrAD <- function(metadata, spec) {
-  metadata |>
-    rename(
-      PMI = pmi,
-      isHispanic = ethnicity,
-      amyCerad = CERAD,
-      amyThal = Thal,
-      Braak_NFT = Braak
-    ) |>
-    mutate(
-      ageDeath = censor_ages(ageDeath, spec),
-      amyThal = case_match(amyThal,
-        0 ~ spec$amyThal$none,
-        1 ~ spec$amyThal$phase1,
-        .default = as.character(amyThal)
-      ),
-      Braak_NFT = to_Braak_stage(floor(Braak_NFT), spec),
-      dataContributionGroup = spec$dataContributionGroup$mayo,
-      cohort = spec$cohort$mayo,
+      PD = ifelse(grepl("Parkinson", diagnosis), spec$true_val, spec$false_val),
+      MCI = ifelse(grepl("mild cognitive impairment", diagnosis),
+                   spec$true_val, spec$false_val),
+      Dementia = ifelse(grepl("dementia", diagnosis),
+                        spec$true_val, spec$false_val),
+      LBD = ifelse(grepl("Lewy body", diagnosis), spec$true_val, spec$false_val),
+      Tumor = ifelse(grepl("Cancer", diagnosis), spec$true_val, spec$false_val),
+      Vascular = ifelse(grepl("vascular", diagnosis),
+                        spec$true_val, spec$false_val)
     )
 }
 
@@ -889,6 +480,9 @@ harmonize_MC_BrAD <- function(metadata, spec) {
 #     `isHispanic` = "True"
 #   * Add a `cohort` column with either "Mount Sinai Brain Bank" or "UPitt"
 #   * Change `dataContributionGroup` "UPitt" to "University of Pittsburgh"
+#   * Harmonize the `Dx` column into a binary `BD` column
+#   * Harmonize the `ClinConPrimDxText` into a binary `SCZ` column
+#   * Create a binary `Control` column based on `Dx` and `ClinConPrimDxText`
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -913,8 +507,8 @@ harmonize_BD2 <- function(metadata, spec) {
       # Shouldn't need censoring but just in case
       ageDeath = censor_ages(ageDeath, spec),
       isHispanic = ifelse(race == "Hispanic",
-                          spec$isHispanic$hisp_true,
-                          spec$isHispanic$hisp_false),
+                          spec$isHispanic$true_val,
+                          spec$isHispanic$false_val),
       race = case_match(
         race,
         "Black" ~ spec$race$Black,
@@ -933,7 +527,24 @@ harmonize_BD2 <- function(metadata, spec) {
         "MSSM" ~ spec$dataContributionGroup$mssm,
         "UPitt" ~ spec$dataContributionGroup$upitt,
         .default = dataContributionGroup
-      )
+      ),
+      # Not enough Braak or Cerad values to use ADoutcome
+      # There are no missing values for Dx. Most of the values in
+      # ClinConPrimDxText and ClinConSecDxText are missing/NA, so we only use
+      # their non-missing values to pull out diagnoses for SCZ, MDD, and OTHER
+      # and assume missing values mean no diagnosis for those diseases.
+      BD = ifelse(Dx == "BD", spec$true_val, spec$false_val),
+      SCZ = ifelse(grepl("Schizophrenia", ClinConPrimDxText),
+                   spec$true_val, spec$false_val),
+      MDD = ifelse(grepl("Major depressive disorder", ClinConPrimDxText) |
+                     grepl("Major depressive disorder", ClinConSecDxText),
+                   spec$true_val, spec$false_val),
+      OTHER = ifelse(grepl("Schizoaffective", ClinConPrimDxText),
+                     spec$true_val, spec$false_val),
+      Control = ifelse(Dx == "Control" & is.na(ClinConPrimDxText) &
+                         is.na(ClinConSecDxText),
+                       spec$true_val, spec$false_val)
+      # TODO this study has a "BD_type" column
     )
 
   # Modification for de-duplication in the main harmonization function
@@ -974,6 +585,17 @@ harmonize_BD2 <- function(metadata, spec) {
 #   * Change `sex` values to all lower case
 #   * Add a `cohort` column based on dataContributionGroup values
 #   * Change `dataContributionGroup` values to conform to data dictionary
+#   * Harmonize the `Info.Diagnosis` field into binary `PD` and `Control` fields
+#
+# Note on diagnosis:
+#   There are several possible diagnosis fields: Info.Diagnosis,
+#   PD_Medical_History.diagnosis, and PD_Medical_History.most_recent_diagnosis.
+#   The first two agree with each other, but PD_Medical_History.diagnosis has 4
+#   samples with values of "Dementia With Lewy Bodies" or "Parkinsonism", and
+#   Info.Diagnosis groups these in with "PD".
+#   PD_Medical_History.most_recent_diagnosis appears to be missing a lot of data
+#   that exists in the other two fields. Given that, I've chosen to use
+#   Info.Diagnosis as the ground truth field for the harmonized PD column.
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -1005,8 +627,8 @@ harmonize_AMP_PD <- function(metadata, spec) {
       isHispanic = case_match(
         isHispanic,
         "Unknown" ~ spec$missing,
-        "Hispanic or Latino" ~ spec$isHispanic$hisp_true,
-        "Not Hispanic or Latino" ~ spec$isHispanic$hisp_false,
+        "Hispanic or Latino" ~ spec$isHispanic$true_val,
+        "Not Hispanic or Latino" ~ spec$isHispanic$false_val,
         .default = isHispanic
       ),
       race = ifelse(race == "Unknown", spec$missing, race),
@@ -1030,7 +652,10 @@ harmonize_AMP_PD <- function(metadata, spec) {
         "UD" ~ spec$dataContributionGroup$udall,
         "UM" ~ spec$dataContributionGroup$umiami,
         .default = dataContributionGroup
-      )
+      ),
+      # There are no missing values in the Info.Diagnosis field
+      PD = ifelse(Info.Diagnosis == "PD", spec$true_val, spec$false_val),
+      Control = ifelse(Info.Diagnosis == "Control", spec$true_val, spec$false_val)
     )
 }
 
@@ -1043,10 +668,10 @@ harmonize_AMP_PD <- function(metadata, spec) {
 #
 # Download commands used:
 #   dnastack use cloud.parkinsonsroadmap.org
-#   dnastack collections query -c prod-postmortem-derived-brain-sequencing-collection "SELECT * FROM \"collections\".\"prod_postmortem_derived_brain_sequencing_collection\".\"cohort_subject\"" -o csv > "data/downloads/ASAP_subject-export-2025-10-02.csv"
-#   dnastack collections query -c prod-postmortem-derived-brain-sequencing-collection "SELECT * FROM \"collections\".\"prod_postmortem_derived_brain_sequencing_collection\".\"cohort_clinpath\"" -o csv > "data/downloads/ASAP_clinpath-export-2025-10-02.csv"
+#   dnastack collections query -c prod-cohort-pmdbs-sc-rnaseq "SELECT * FROM \"collections\".\"prod_cohort_pmdbs_sc_rnaseq\".\"cohort_subject\"" -o csv > "data/downloads/ASAP_subject-export-2026-04-28.csv"
+#   dnastack collections query -c prod-cohort-pmdbs-sc-rnaseq "SELECT * FROM \"collections\".\"prod_cohort_pmdbs_sc_rnaseq\".\"cohort_clinpath\"" -o csv > "data/downloads/ASAP_clinpath-export-2026-04-28.csv"
 #
-# Modifications needed for version Oct 02, 2025:
+# Modifications needed for version April 28, 2026:
 #   * Rename columns:
 #     * `age_at_death` => `ageDeath`
 #     * `duration_pmi` => `PMI`
@@ -1061,17 +686,22 @@ harmonize_AMP_PD <- function(metadata, spec) {
 #     column `asap_dataset_id` is left in the data set despite being a duplicate
 #     of individualID due to its ubiquitous use in other ASAP metadata files.
 #     Leaving the column named as-is makes it easier to merge with other files.
-#   * Censor ages over 90
-#   * Set empty string ("") values in harmonized columns to NA so deduplication works
+#   * Censor ages over 90. Some ages are already censored with values of "89+ "
+#     (extra space included), and we assume those values should be "90+".
+#   * Set empty string ("") and "Not Reported" values to NA so deduplication works
 #   * Change `sex` values to all lower case
-#   * Change `isHispanic` "Not Reported" values to "missing or unknown"
+#   * Change `isHispanic` to True/False values
 #   * Update `Braak_NFT`, `amyCerad`, `amyThal`, and `cohort` values to conform
 #     to the data dictionary.
-#   * Add `dataContributionGroup` values based on the `asap_team_id` values.
-#   * Deduplicate rows with the same individual, which are identical except for
-#     some columns where one row is missing a value and one has the value, or
-#     where two different groups typed slightly different values for the same
-#     column
+#   * Add `dataContributionGroup`
+#   * Create a unified path_autopsy_dx field that combines path_autopsy_dx_main
+#     and all of the path_autopsy_*_dx fields
+#   * Manually assign some values for individuals with duplicate rows that have
+#     discrepancies in diagnosis-related fields
+#   * Deduplicate rows with the same individual, which should be identical
+#     except for some columns where one row is missing a value and one has the
+#     value, or where two different groups typed slightly different values for
+#     the same column
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -1084,7 +714,21 @@ harmonize_AMP_PD <- function(metadata, spec) {
 #   dictionary. Columns not defined in the data dictionary are left as-is.
 #
 harmonize_ASAP <- function(metadata, spec) {
+  # First, combine main dx + secondary - eighth dx information for easy
+  # searching of diagnosis names
   meta_new <- metadata |>
+    rowwise() |>
+    mutate(
+      path_autopsy_dx = paste(
+        c_across(starts_with("path_autopsy")) |>
+          setdiff(c("", NA)) |> unique() |> sort(),
+        collapse = "; ")
+      ) |>
+    ungroup() |>
+    # Remove all path_autopsy_* variables except the one just created
+    select(-(starts_with("path_autopsy") & !path_autopsy_dx))
+
+  meta_new <- meta_new |>
     dplyr::rename(
       ageDeath = age_at_death,
       PMI = duration_pmi,
@@ -1097,17 +741,23 @@ harmonize_ASAP <- function(metadata, spec) {
       cohort = biobank_name
     ) |>
     mutate(
-      # This data set uses "" instead of NA, need to set to NA for some
-      # harmonization functions to work
-      across(any_of(expectedColumns), ~ ifelse(.x == "", NA, .x)),
+      # This data set uses "" or "Not Reported" instead of NA, need to set to NA
+      # for deduplication and some harmonization functions to work
+      across(everything(), ~ ifelse(
+        .x == "" | .x == "Not Reported",
+        NA, .x)
+      ),
       # Keep the field named "asap_subject_id" but add individualID column
       individualID = asap_subject_id,
+      # Assume all 89+ are 90+ for this data set
       ageDeath = censor_ages(ageDeath, spec),
       sex = tolower(sex),
-      # There aren't any non-missing or non "Not Reported" values
-      isHispanic = ifelse(isHispanic == "Not Reported",
-                          spec$missing,
-                          isHispanic),
+      isHispanic = case_match(
+        isHispanic,
+        "Hispanic or Latino" ~ spec$isHispanic$true_val,
+        "Not Hispanic or Latino" ~ spec$isHispanic$false_val,
+        .default = isHispanic
+      ),
       # Braak_NFT is already in Roman numerals except for "0" and ""/NA
       Braak_NFT = case_match(
         Braak_NFT,
@@ -1129,16 +779,100 @@ harmonize_ASAP <- function(metadata, spec) {
         amyThal,
         NA ~ spec$missing,
         "4/5" ~ spec$amyThal$phase4, # Round down to phase 4
-        c("0", "0.0") ~ spec$amyThal$none,
+        "0" ~ spec$amyThal$none,
         .default = paste("Phase", suppressWarnings(as.numeric(amyThal)))
       ),
       cohort = case_match(
         cohort,
-        c("BSHRI", "Banner Sun Health Research Institute") ~ spec$cohort$banner,
+        c("Banner_Sun_Health_USA", "Banner Sun Health Research Institute") ~ spec$cohort$banner,
         "QSBB_UK" ~ spec$cohort$qsbb,
         .default = cohort
       ),
       dataContributionGroup = spec$dataContributionGroup$asap,
+
+      ## Manual fixes to data with discrepancies
+
+      # There are only 10 "Other" values, all from TEAM_SCHERZER data. We change
+      # to "Control", i.e. not PD.
+      gp2_phenotype = ifelse(gp2_phenotype == "Other", "Control", gp2_phenotype),
+
+      # TEAM_HAFLER and TEAM_SCHERZER use "Healthy Control", while the other 4
+      # teams use "No PD nor other neurological disorder", so we harmonize
+      primary_diagnosis = ifelse(primary_diagnosis == "Healthy Control",
+                                 "No PD nor other neurological disorder",
+                                 primary_diagnosis),
+
+      # ASAP_PMDBS_000003 and ASAP_PMDBS_000020 have two rows each with
+      # different cognitive_status: MCI and Dementia. In both cases, they have a
+      # diagnosis of PD with dementia so the cognitive_status is changed to
+      # Dementia for both copies.
+      # ASAP_PMDBS_000002 has two rows with Normal and MCI values, but the
+      # primary_diagnosis_text for both has MCI in it and hx_dementia_mci = Yes,
+      # so we set both rows to MCI
+      # ASAP_PMDBS_000009 has two rows with Normal and MCI values, but is a
+      # control sample with hx_dementia_mci = No, so we set both rows to Normal
+      cognitive_status = case_match(
+        asap_subject_id,
+        c("ASAP_PMDBS_000003", "ASAP_PMDBS_000020") ~ "Dementia",
+        "ASAP_PMDBS_000002" ~ "MCI",
+        "ASAP_PMDBS_000009" ~ "Normal",
+        .default = cognitive_status
+      ),
+
+      # This subject has two different PMIs listed in duplicate rows, so we use
+      # the lowest one (chosen arbitrarily).
+      PMI = ifelse(asap_subject_id == "ASAP_PMDBS_000225", 9.25, PMI),
+
+      ## End manual fixes
+
+      ADoutcome = determineADoutcome(.data, spec),
+      AD = case_match(
+        ADoutcome,
+        "AD" ~ spec$true_val,
+        c("Control", "Other") ~ spec$false_val,
+        .default = spec$missing
+      ),
+
+      # gp2_phenotype is either PD or Control. There are no missing values.
+      PD = ifelse(gp2_phenotype == "PD", spec$true_val, spec$false_val),
+
+      # The last_diagnosis field also has 24 individuals with mention of Lewy
+      # bodies, however 22 of these individuals have gp2_phenotype = PD, and
+      # the other two are AD and Control, so we ignore this field.
+      LBD = ifelse(grepl("Lewy body disease nos", path_autopsy_dx),
+                   spec$true_val, spec$false_val),
+
+      # Assume false if PSP not specified
+      PSP = ifelse(grepl("Progressive supranuclear palsy", path_autopsy_dx),
+                   spec$true_val, spec$false_val),
+
+      # There are no missing primary_diagnosis values
+      OTHER = case_when(
+        primary_diagnosis == "Other neurological disorder" ~ spec$true_val,
+        primary_diagnosis == "Alzheimer's disease" & ADoutcome == "Other" ~ spec$true_val,
+        .default = spec$false_val
+      ),
+
+      # Values are either Normal, MCI, Dementia, or NA
+      MCI = case_match(
+        cognitive_status,
+        "MCI" ~ spec$true_val,
+        c("Normal", "Dementia") ~ spec$false_val,
+        .default = spec$missing
+      ),
+
+      Dementia = case_match(
+        cognitive_status,
+        "Dementia" ~ spec$true_val,
+        c("Normal", "MCI") ~ spec$false_val,
+        .default = spec$missing
+      ),
+
+      # Assume false if Cerebrovascular disease is not listed
+      Vascular = case_when(
+        grepl("Cerebrovascular disease", path_autopsy_dx) ~ spec$true_val,
+        .default = spec$false_val
+      )
     )
 
   # De-duplicate individuals within this data set, *NOT* with AMP-AD 1.0 / DivCo.
@@ -1155,10 +889,12 @@ harmonize_ASAP <- function(metadata, spec) {
     # slightly different for the same column.
     group_by(individualID) |>
     summarize(
+      path_autopsy_dx = str_split(path_autopsy_dx, "; ") |>
+        unlist() |> unique() |> sort() |> paste(collapse = "; "),
       across(
         everything(),
         ~ ifelse(is.character(.x) && !all(is.na(.x)),
-                 paste(unique(.x), collapse = "; "),
+                 paste(sort(na.omit(unique(.x))), collapse = "; "),
                  unique(.x)) # Leave numeric or NA values alone but keep them in the data frame
       )
     ) |>
@@ -1168,6 +904,7 @@ harmonize_ASAP <- function(metadata, spec) {
   return(meta_new)
 }
 
+# TODO there is overlap between SCZ and HD, but 3 overlapping samples have slightly different PMIs
 
 # Harmonize McCarroll SCZ / GEN-A16 metadata
 #
@@ -1184,6 +921,7 @@ harmonize_ASAP <- function(metadata, spec) {
 # * Change `sex` values to all lower case
 # * Add `dataContributionGroup` = "Broad Institute"
 # * Add `cohort` = "HBTRC"
+# * Harmonize `Schizophrenia` diagnosis into binary `SCZ` and `Control` columns
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -1206,8 +944,14 @@ harmonize_McCarroll_SCZ <- function(metadata, spec) {
       ageDeath = censor_ages(ageDeath, spec),
       sex = tolower(sex),
       dataContributionGroup = spec$dataContributionGroup$broad,
-      cohort = spec$cohort$harvard
-    )
+      cohort = spec$cohort$harvard,
+      # There are no missing values in the Schizophrenia field
+      SCZ = ifelse(Schizophrenia == "Affected",
+                   spec$true_val, spec$false_val),
+      Control = ifelse(Schizophrenia == "Unaffected",
+                       spec$true_val, spec$false_val)
+    ) |>
+    select(-Schizophrenia)
 }
 
 
@@ -1227,6 +971,7 @@ harmonize_McCarroll_SCZ <- function(metadata, spec) {
 # * Change `sex` values to all lower case
 # * Add `dataContributionGroup` = "Broad Institute"
 # * Add `cohort` = "HBTRC"
+# * Harmonize `Status` column into binary `HD` and `Control` columns
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -1246,10 +991,13 @@ harmonize_McCarroll_HD <- function(metadata, spec) {
       ageDeath = Age
     ) |>
     mutate(
-      ageDeath = ifelse(ageDeath == ">89", spec$over90, ageDeath),
+      ageDeath = ifelse(ageDeath == ">89", spec$ageDeath$over90, ageDeath),
       PMI = ifelse(PMI == "n/a", NA, suppressWarnings(as.numeric(PMI))),
       sex = tolower(sex),
       dataContributionGroup = spec$dataContributionGroup$broad,
-      cohort = spec$cohort$harvard
+      cohort = spec$cohort$harvard,
+      # There are no missing values in the Status column
+      HD = ifelse(Status == "Case", spec$true_val, spec$false_val),
+      Control = ifelse(Status == "Control", spec$true_val, spec$false_val)
     )
 }
