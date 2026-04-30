@@ -86,8 +86,9 @@ manifest <- c()
 
 
 # GEN-A1 / NPS-AD --------------------------------------------------------------
-# This dataset has overlap with BD2, MSBB, ROSMAP, and Diverse Cohorts, and is
-# used to fill in missing values in these studies.
+
+# This dataset has overlap with BD2, ROSMAP, and Diverse Cohorts, and is used to
+# fill in missing values in these studies.
 
 meta_file <- synapse_download(syn_ids[["GEN-A1"]])
 meta <- read.csv(meta_file$path)
@@ -584,6 +585,8 @@ synapse_upload(manifest_file, spec$upload_synID)
 
 # Combine all harmonized data into one data frame
 
+required_columns <- c(spec$demographic_columns, spec$diagnosis_columns)
+
 df_list <- apply(manifest, 1, function(m_row) {
   m_file <- synapse_download(m_row[["metadata_synid"]])
   meta <- read.csv(m_file$path) |>
@@ -592,7 +595,7 @@ df_list <- apply(manifest, 1, function(m_row) {
       GENESIS_study = m_row[["GENESIS_study"]],
       study = m_row[["study"]]
     ) |>
-    select(all_of(spec$required_columns), GENESIS_study)
+    select(all_of(required_columns), GENESIS_study)
   return(meta)
 }, simplify = FALSE)
 

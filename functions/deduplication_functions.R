@@ -55,7 +55,7 @@ library(stringr)
 #   for rows that come from data frames without that column.
 deduplicate_studies <- function(df_list,
                                 spec,
-                                include_cols = spec$required_columns,
+                                include_cols = c(spec$demographic_columns, spec$diagnosis_columns),
                                 exclude_cols = c("study"),
                                 verbose = TRUE) {
   # Make sure certain fields in each data frame are of the same type. Also

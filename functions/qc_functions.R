@@ -145,12 +145,19 @@ validate_values <- function(metadata, spec, verbose = TRUE) {
     cat("OK PMI\n")
   }
 
-  # Other columns should have only string values that exist in the dictionary
-  cols_check <- setdiff(spec$required_columns, c("individualID", "ageDeath", "PMI"))
+  # Other columns should have only values that exist in the dictionary
+  cols_check <- setdiff(c(spec$demographic_columns, spec$diagnosis_columns),
+                        c("individualID", "ageDeath", "PMI"))
 
   for (col_name in cols_check) {
     values <- metadata[, col_name]
-    expected <- c(spec$missing, unlist(spec[[col_name]]))
+
+    if (col_name %in% spec$diagnosis_columns) {
+      expected <- c(NA, unlist(spec$diagnosis))
+    } else {
+      expected <- c(spec$missing, unlist(spec[[col_name]]))
+    }
+
     if (!all(values %in% expected)) {
       errors[[col_name]] <- setdiff(values, expected)
       cat("X ", col_name, "\n")

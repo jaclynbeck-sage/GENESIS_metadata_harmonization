@@ -9,21 +9,17 @@ default:
   # required columns, some of which do not appear in this config.
 
   missing: "missing or unknown"
-  true_val: "True"
-  false_val: "False"
 
-  diagnosis_columns: ["AD", "BD", "Epilepsy", "HD", "LBD", "PD", "PSP", "SCZ",
-                      "Tumor", "Vascular", "MCI", "Dementia", "OTHER", "Control"]
-
-  required_columns:
+  demographic_columns:
     ["individualID", "dataContributionGroup", "cohort", "sex", "race",
      "isHispanic", "ageDeath", "PMI", "apoeGenotype", "apoe4Status", "amyCerad",
      "amyAny", "amyThal", "amyA", "Braak_NFT", "bScore_NFT", "Braak_LB",
      "bScore_LB", "study"]
 
-  boolean_values: &bool_val
-    true_val: "True"
-    false_val: "False"
+  diagnosis_columns:
+    ["AD", "BD", "Epilepsy", "HD", "LBD", "PD", "PSP", "SCZ",
+     "Tumor", "Vascular", "MCI", "Dementia", "Other", "Control"]
+
 
   ## Demographics --------------------------------------------------------------
 
@@ -41,7 +37,9 @@ default:
     White: "White"
     other: "other"
 
-  isHispanic: *bool_val
+  isHispanic:
+    true_val: "True"
+    false_val: "False"
 
   ## Pathology -----------------------------------------------------------------
 
@@ -179,3 +177,9 @@ default:
     smib_ad: "SMIB-AD"
     snRNA_BA10: "snRNAseqPFC_BA10"
     snRNA_trem2: "snRNAseqAD_TREM2"
+
+  ## Diagnosis column values ---------------------------------------------------
+
+  diagnosis:
+    true_val: 1
+    false_val: 0

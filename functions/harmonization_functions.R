@@ -38,7 +38,7 @@ for (file in dataset_functions) {
 #   a `data.frame` with all relevant fields harmonized to the GENESIS data
 #   dictionary. Columns not defined in the data dictionary are left as-is.
 #
-harmonize <- function(study_name, metadata, spec, harmonized_baseline = NULL) {
+harmonize <- function(study_name, metadata, spec, nps_data = NULL) {
   # Study-specific harmonization
   metadata <- switch(
     study_name,
@@ -59,20 +59,29 @@ harmonize <- function(study_name, metadata, spec, harmonized_baseline = NULL) {
     .default = metadata
   )
 
-  # Add any missing fields
-  missing_fields <- setdiff(spec$required_columns, colnames(metadata))
+  # Add any missing non-diagnosis fields
+  missing_fields <- setdiff(spec$demographic_columns, colnames(metadata))
   for (field in missing_fields) {
     metadata[, field] <- spec$missing
   }
 
-  # Don't fill NA values with "missing" in the ageDeath or PMI columns
-  cols_fill <- setdiff(spec$required_columns, c("ageDeath", "PMI"))
+  # Add any missing diagnosis fields, which should have missing values set to
+  # NA instead of "missing or unknown"
+  missing_diagnosis <- setdiff(spec$diagnosis_columns, colnames(metadata))
+  for (field in missing_diagnosis) {
+    metadata[, field] <- NA
+  }
+
+  # Don't fill NA values with "missing" in the ageDeath or PMI columns.
+  # Diagnosis columns are not included in this NA fill operation.
+  cols_fill <- setdiff(spec$demographic_columns, c("ageDeath", "PMI"))
 
   metadata <- metadata |>
     mutate(
       # Fix fields that might be read in as numeric but should be characters
       across(any_of(cols_fill), as.character),
-      # Fill NAs in character columns as "missing or unknown"
+      # Fill NAs in character columns as "missing or unknown". cols_fill does
+      # not include diagnosis columns
       across(any_of(cols_fill), ~ ifelse(is.na(.x), spec$missing, .x)),
       # Add or update derived columns
       apoe4Status = get_apoe4Status(apoeGenotype, spec),
@@ -84,17 +93,17 @@ harmonize <- function(study_name, metadata, spec, harmonized_baseline = NULL) {
       study = study_name
     )
 
-  # If applicable, pull missing information from AMP-AD 1.0 and Diverse Cohorts metadata
-  if (!is.null(harmonized_baseline)) {
+  # If applicable, pull missing information from NPS-AD metadata
+  if (!is.null(nps_data)) {
     metadata <- deduplicate_studies(
-      list(metadata, harmonized_baseline),
+      list(metadata, nps_data),
       spec,
       verbose = FALSE
     ) |>
       subset(study == study_name) |>
       select(all_of(colnames(metadata)))
 
-    # Extra step for BD2, which had individualID modified to match AMP-AD 1.0 IDs
+    # Extra step for BD2, which had individualID modified to match NPS-AD IDs
     # in the BD2 harmonization function
     if (study_name == spec$study$bd2) {
       metadata$individualID <- metadata$bd2_id
@@ -103,8 +112,9 @@ harmonize <- function(study_name, metadata, spec, harmonized_baseline = NULL) {
   }
 
   # Put harmonized fields first in the data frame
+  all_columns <- c(spec$demographic_columns, spec$diagnosis_columns)
   metadata <- metadata |>
-    select(all_of(spec$required_columns), !all_of(spec$required_columns))
+    select(all_of(all_columns), !all_of(all_columns))
 
   return(metadata)
 }
