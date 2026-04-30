@@ -26,14 +26,12 @@ library(synapser)
 library(dplyr)
 library(purrr)
 library(stringr)
-library(readxl)
 
 spec <- config::get(file = "GENESIS_harmonization.yml")
-source("util_functions.R")
-source("dataset_specific_functions.R")
 
-dataset_functions <- list.files("dataset_functions", full.names = TRUE)
-for (file in dataset_functions) {
+# Source all the helper function scripts
+helper_functions <- list.files("functions", pattern = "\\.R", full.names = TRUE)
+for (file in helper_functions) {
   source(file)
 }
 
@@ -83,7 +81,6 @@ mccarroll_hd_file <- file.path("data", "local_metadata",
 
 ##
 
-synLogin()
 check_new_versions(syn_ids)
 
 manifest <- c()
@@ -140,21 +137,23 @@ if (!file.exists(amp_pd_local_filenames$main_file)) {
   if (verbose) {
     # colnames(meta) # Don't print, there are > 600 columns
 
-    print_qc(meta,
-             ageDeath_col = "Demographics.age_at_baseline",
-             sex_col = "Demographics.sex",
-             pmi_col = "PMI.PMI_hours",
-             isHispanic_col = "ethnicity",
-             braak_nft_col = "LBD_Cohort_Path_Data.path_braak_nft",
-             braak_lb_col = "LBD_Cohort_Path_Data.path_braak_lb",
-             cerad_col = "LBD_Cohort_Path_Data.path_cerad",
-             bscore_lb_col = "Info.BraakGroup")
+    print_summary(
+      meta,
+      ageDeath_col = "Demographics.age_at_baseline",
+      sex_col = "Demographics.sex",
+      pmi_col = "PMI.PMI_hours",
+      isHispanic_col = "ethnicity",
+      braak_nft_col = "LBD_Cohort_Path_Data.path_braak_nft",
+      braak_lb_col = "LBD_Cohort_Path_Data.path_braak_lb",
+      cerad_col = "LBD_Cohort_Path_Data.path_cerad",
+      bscore_lb_col = "Info.BraakGroup"
+    )
   }
 
   meta_new <- harmonize(spec$study$amp_pd, meta, spec)
 
   if (verbose) {
-    print_qc(meta_new)
+    print_summary(meta_new)
   }
 
   cat("\nGEN-A3 /", spec$study$amp_pd, "\n")
@@ -182,13 +181,13 @@ meta <- read.csv(meta_file$path)
 if (verbose) {
   colnames(meta)
 
-  print_qc(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
+  print_summary(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 }
 
 meta_new <- harmonize(spec$study$sea_ad, meta, spec)
 
 if (verbose) {
-  print_qc(meta_new)
+  print_summary(meta_new)
 }
 
 cat("\nGEN-A4 & B5 /", spec$study$sea_ad, "\n")
@@ -216,13 +215,13 @@ meta <- read.csv(meta_file$path)
 if (verbose) {
   colnames(meta)
 
-  print_qc(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
+  print_summary(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 }
 
 meta_new <- harmonize(spec$study$smib_ad, meta, spec)
 
 if (verbose) {
-  print_qc(meta_new)
+  print_summary(meta_new)
 }
 
 cat("\nGEN-A9 /", spec$study$smib_ad, "\n")
@@ -252,13 +251,13 @@ meta <- read.csv(meta_file$path)
 if (verbose) {
   colnames(meta)
 
-  print_qc(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
+  print_summary(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 }
 
 meta_new <- harmonize(spec$study$mcmps, meta, spec)
 
 if (verbose) {
-  print_qc(meta_new)
+  print_summary(meta_new)
 }
 
 cat("\nGEN-A10 /", spec$study$mcmps, "\n")
@@ -289,13 +288,13 @@ meta <- read.csv(meta_file$path)
 if (verbose) {
   colnames(meta)
 
-  print_qc(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
+  print_summary(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 }
 
 meta_new <- harmonize(spec$study$mc_snrna, meta, spec)
 
 if (verbose) {
-  print_qc(meta_new)
+  print_summary(meta_new)
 }
 
 cat("\nGEN-A11 /", spec$study$mc_snrna, "\n")
@@ -326,13 +325,13 @@ meta <- read.csv(meta_file$path)
 if (verbose) {
   colnames(meta)
 
-  print_qc(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
+  print_summary(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 }
 
 meta_new <- harmonize(spec$study$mc_brad, meta, spec)
 
 if (verbose) {
-  print_qc(meta_new)
+  print_summary(meta_new)
 }
 
 cat("\nGEN-A12 /", spec$study$mc_brad, "\n")
@@ -369,16 +368,18 @@ if (!file.exists(asap_local_filenames$subject)) {
   if (verbose) {
     colnames(meta)
 
-    print_qc(meta, pmi_col = "duration_pmi", ageDeath_col = "age_at_death",
-             braak_nft_col = "path_braak_nft", braak_lb_col = "path_braak_asyn",
-             cerad_col = "path_cerad", thal_col = "path_thal",
-             isHispanic_col = "ethnicity", apoe_col = "apoe_e4_status")
+    print_summary(
+      meta, pmi_col = "duration_pmi", ageDeath_col = "age_at_death",
+      braak_nft_col = "path_braak_nft", braak_lb_col = "path_braak_asyn",
+      cerad_col = "path_cerad", thal_col = "path_thal",
+      isHispanic_col = "ethnicity", apoe_col = "apoe_e4_status"
+    )
   }
 
   meta_new <- harmonize(spec$study$asap, meta, spec)
 
   if (verbose) {
-    print_qc(meta_new)
+    print_summary(meta_new)
   }
 
   cat("\nGEN-A15 /", spec$study$asap, "\n")
@@ -409,13 +410,13 @@ if (!file.exists(mccarroll_scz_file)) {
   if (verbose) {
     colnames(meta)
 
-    print_qc(meta, ageDeath_col = "Age", sex_col = "Sex")
+    print_summary(meta, ageDeath_col = "Age", sex_col = "Sex")
   }
 
   meta_new <- harmonize(spec$study$mccarroll_scz, meta, spec)
 
   if (verbose) {
-    print_qc(meta_new)
+    print_summary(meta_new)
   }
 
   cat("\nGEN-A16 /", spec$study$mccarroll_scz, "\n")
@@ -446,13 +447,13 @@ if (!file.exists(mccarroll_hd_file)) {
   if (verbose) {
     colnames(meta)
 
-    print_qc(meta, ageDeath_col = "Age", sex_col = "Sex")
+    print_summary(meta, ageDeath_col = "Age", sex_col = "Sex")
   }
 
   meta_new <- harmonize(spec$study$mccarroll_hd, meta, spec)
 
   if (verbose) {
-    print_qc(meta_new)
+    print_summary(meta_new)
   }
 
   cat("\nGEN-A17 /", spec$study$mccarroll_hd, "\n")
@@ -497,13 +498,13 @@ if (!file.exists(bd2_local_filename)) {
   if (verbose) {
     colnames(meta)
 
-    print_qc(meta, ageDeath_col = "Age", race_col = "Race", sex_col = "Sex")
+    print_summary(meta, ageDeath_col = "Age", race_col = "Race", sex_col = "Sex")
   }
 
   meta_new <- harmonize(spec$study$bd2, meta, spec, harmonized_baseline)
 
   if (verbose) {
-    print_qc(meta_new)
+    print_summary(meta_new)
   }
 
   cat("\nGEN-B8 /", spec$study$bd2, "\n")

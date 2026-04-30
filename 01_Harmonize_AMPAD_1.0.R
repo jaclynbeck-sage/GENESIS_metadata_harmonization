@@ -22,9 +22,12 @@ library(purrr)
 library(stringr)
 
 spec <- config::get(file = "GENESIS_harmonization.yml")
-source("util_functions.R")
-source("dataset_specific_functions.R")
-source(file.path("dataset_functions", "ADKP_datasets.R"))
+
+# Source all the helper function scripts
+helper_functions <- list.files("functions", pattern = "\\.R", full.names = TRUE)
+for (file in helper_functions) {
+  source(file)
+}
 
 # All files are from the ADKP Harmonization Project, so they have been
 # harmonized and de-duplicated already and just need some minor edits to comply
@@ -36,7 +39,6 @@ syn_ids <- list(
   "NPS-AD" = "syn73713770.2"
 )
 
-synLogin()
 check_new_versions(syn_ids)
 
 df_list <- list()
@@ -51,12 +53,12 @@ meta <- read.csv(meta_file$path)
 
 colnames(meta)
 
-print_qc(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
+print_summary(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 
 meta_new <- harmonize(spec$study$msbb, meta, spec) |>
   mutate(filename = meta_file$name)
 
-print_qc(meta_new)
+print_summary(meta_new)
 validate_values(meta_new, spec)
 
 df_list[["MSBB"]] <- meta_new
@@ -71,12 +73,12 @@ meta <- read.csv(meta_file$path)
 
 colnames(meta)
 
-print_qc(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
+print_summary(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 
 meta_new <- harmonize(spec$study$rosmap, meta, spec) |>
   mutate(filename = meta_file$name)
 
-print_qc(meta_new)
+print_summary(meta_new)
 validate_values(meta_new, spec)
 
 df_list[["ROSMAP"]] <- meta_new
@@ -98,12 +100,12 @@ meta <- read.csv(meta_file$path)
 
 colnames(meta)
 
-print_qc(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
+print_summary(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 
 meta_new <- harmonize(spec$study$diverse_cohorts, meta, spec) |>
   mutate(filename = meta_file$name)
 
-print_qc(meta_new)
+print_summary(meta_new)
 validate_values(meta_new, spec)
 
 df_list[["Diverse_Cohorts"]] <- meta_new
@@ -118,12 +120,12 @@ meta <- read.csv(meta_file$path)
 
 colnames(meta)
 
-print_qc(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
+print_summary(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 
 meta_new <- harmonize(spec$study$nps_ad, meta, spec) |>
   mutate(filename = meta_file$name)
 
-print_qc(meta_new)
+print_summary(meta_new)
 validate_values(meta_new, spec)
 
 df_list[["NPS-AD"]] <- meta_new
@@ -133,7 +135,7 @@ df_list[["NPS-AD"]] <- meta_new
 
 meta_all <- deduplicate_studies(df_list, spec, verbose = FALSE)
 
-print_qc(meta_all)
+print_summary(meta_all)
 validate_values(meta_all, spec)
 
 # Save de-duplicated data frame for step 2
