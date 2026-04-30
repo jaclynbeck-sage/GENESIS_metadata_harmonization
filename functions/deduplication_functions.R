@@ -20,11 +20,8 @@ library(stringr)
 #   3. For the ageDeath/PMI columns where rows have different numbers, report
 #      the difference but leave the values as-is. If rows disagree only because
 #      of precision, nothing is reported.
-#   4. For cases where "MSBB" disagrees with another source, the value from
-#      "MSBB" is always used except for the "apoeGenotype" and "apoe4Status"
-#      columns, where the "NPS-AD" value is used instead if it is available.
-#      MSBB data is preferentially used because it has been corrected by updated
-#      data, while some NPS values have not.
+#   4. NPS-AD apoeGenotype and apoe4Status always override any conflicting
+#      values in other data sets, because they were algorithmically determined.
 #
 # When duplicated data is un-resolvable, either because it is a special case
 # that is intentionally flagged or because this function doesn't have anything
@@ -37,7 +34,7 @@ library(stringr)
 # their original values for the returned data frame.
 #
 # Note: To shorten this function and make it more readable, some processing has
-# been broken out into separate functions.
+# been broken out into a separate function.
 #
 # Arguments:
 #   df_list - a list of data frames, each of which must include an `individualID`
@@ -155,14 +152,6 @@ deduplicate_studies <- function(df_list,
             # Use the NPS-AD value for apoe genotype / status where it disagrees
             # with other data sets
             meta_tmp[, col_name] <- meta_tmp[meta_tmp$study == "NPS-AD", col_name]
-          } else if ("MSBB" %in% meta_tmp$study) {
-            if (col_name %in% c("race", "isHispanic")) {
-              # Do not correct NPS-AD race or isHispanic values
-              meta_tmp[meta_tmp$study != "NPS-AD", col_name] <-
-                meta_tmp[meta_tmp$study == "MSBB", col_name]
-            } else {
-              meta_tmp[, col_name] <- meta_tmp[meta_tmp$study == "MSBB", col_name]
-            }
           } else if (col_name %in% c("ageDeath", "PMI")) {
             meta_tmp <- deduplicate_ageDeath_pmi(meta_tmp, leftover, col_name, report_string)
 
@@ -195,13 +184,12 @@ deduplicate_studies <- function(df_list,
 
 # This function is used inside `deduplicate_studies` to resolve duplication of
 # age and PMI data for a single individual. If this function is called, then
-# there are at least 2 distinct, non-NA values in the `ageDeath` or `PMI`
-# column that are assigned to this individual. This function checks whether the
-# numbers differ only by precision (e.g. 3.5 vs 3.547), or if the numbers are
-# completely different (e.g. 4 vs 10). The former case is ignored, and the
-# latter case will be reported to the console. Currently, no modification is
-# done to the values themselves, as NPS-AD wishes to keep all of their values
-# as-is even where they differ from Diverse Cohorts / AMP-AD 1.0.
+# there are at least 2 distinct, non-NA values in the `ageDeath` or `PMI` column
+# that are assigned to this individual. This function checks whether the numbers
+# differ only by precision (e.g. 3.5 vs 3.547), or if the numbers are completely
+# different (e.g. 4 vs 10). In the former case, the value from NPS-AD is used if
+# it exists, otherwise differences are ignored. The latter case will be reported
+# to the console but no modifications will be made.
 #
 # Arguments:
 #   meta_tmp - a data frame with 2 or more rows, where all rows have the same
@@ -226,39 +214,28 @@ deduplicate_ageDeath_pmi <- function(meta_tmp, leftover, col_name, report_string
 
   equivalent <- sapply(num_vals, all.equal, num_vals[1], tolerance = 1e-3)
 
-  # If there's a real mismatch, try using the MSBB value if it exists. If not,
-  # then use the NPS-AD if it exists. If not, report the mismatch. `num_vals`
-  # should have one unique value if all numbers are roughly equal, AND
-  # `num_vals` should be the same length as `leftover`. If it's not, that means
-  # not all values in `leftover` are numeric (i.e. one may be 90+). We report it
-  # but don't try and resolve the duplication. Note that `all.equal` returns a
-  # string with the difference between two numbers if they are not equal, rather
-  # than FALSE, so we have to check for != TRUE instead of == FALSE.
+  # If there's a real mismatch, try using the NPS-AD value if it exists. If not,
+  # report the mismatch. `num_vals` should have one unique value if all numbers
+  # are roughly equal, AND `num_vals` should be the same length as `leftover`.
+  # If it's not, that means not all values in `leftover` are numeric (i.e. one
+  # may be 90+). We report it but don't try and resolve the duplication. Note
+  # that `all.equal` returns a string with the difference between two numbers if
+  # they are not equal, rather than FALSE, so we have to check for != TRUE
+  # instead of == FALSE.
   if (any(equivalent != TRUE)) {
-    if ("MSBB" %in% meta_tmp$study) {
-      meta_tmp[, col_name] <- meta_tmp[meta_tmp$study == "MSBB", col_name]
-    }
-    else if ("NPS-AD" %in% meta_tmp$study) {
+    if ("NPS-AD" %in% meta_tmp$study) {
       meta_tmp[, col_name] <- meta_tmp[meta_tmp$study == "NPS-AD", col_name]
     } else {
       cat(report_string)
     }
   } else if (length(leftover) != ncol(meta_tmp)) {
     # No real mismatch but at least one value was NA and there are multiple
-    # close-enough values. Use MSBB value first if it exists, then NPS-AD if it
-    # exists, then Diverse Cohorts if it exists. Otherwise print.
+    # close-enough values. Use NPS-AD value if it exists. Otherwise print.
     na_vals <- which(is.na(meta_tmp[, col_name]))
 
-    if ("MSBB" %in% meta_tmp$study &&
-        !is.na(meta_tmp[meta_tmp$study == "MSBB", col_name])) {
-      meta_tmp[na_vals, col_name] <- meta_tmp[meta_tmp$study == "MSBB", col_name]
-    }
-    else if ("NPS-AD" %in% meta_tmp$study &&
+    if ("NPS-AD" %in% meta_tmp$study &&
              !is.na(meta_tmp[meta_tmp$study == "NPS-AD", col_name])) {
       meta_tmp[na_vals, col_name] <- meta_tmp[meta_tmp$study == "NPS-AD", col_name]
-    } else if ("AMP-AD_DiverseCohorts" %in% meta_tmp$study &&
-               !is.na(meta_tmp[meta_tmp$study == "AMP-AD_DiverseCohorts", col_name])) {
-      meta_tmp[na_vals, col_name] <- meta_tmp[meta_tmp$study == "AMP-AD_DiverseCohorts", col_name]
     } else {
       cat("Unresolved NA fill: ", report_string)
     }
