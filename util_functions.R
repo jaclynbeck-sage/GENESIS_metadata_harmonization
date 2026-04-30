@@ -905,3 +905,11 @@ updateADoutcome <- function(meta_all, spec) {
     ungroup() |>
     as.data.frame()
 }
+
+
+make_binary_column <- function(column, true_value, spec) {
+  case_match(column,
+             true_value ~ 1,
+             c(spec$missing, NA) ~ NA,
+             .default = 0)
+}

@@ -32,6 +32,11 @@ spec <- config::get(file = "GENESIS_harmonization.yml")
 source("util_functions.R")
 source("dataset_specific_functions.R")
 
+dataset_functions <- list.files("dataset_functions", full.names = TRUE)
+for (file in dataset_functions) {
+  source(file)
+}
+
 # TRUE will print column names of metadata + unique values for each dataset.
 # FALSE will only print the status of the harmonized metadata for each dataset.
 verbose <- FALSE
@@ -40,7 +45,7 @@ verbose <- FALSE
 syn_ids <- list(
   "NPS-AD" = "syn65907234.7", # GENESIS harmonized file, for GEN-A1
   "ROSMAP" = "syn64759878.8", # GENESIS harmonized file, for GEN-A2, GEN-A8, GEN-A13, GEN-B6
-  "SEA-AD" = "syn31149116.8", # SEA-AD, for GEN-A4 and GEN-B5
+  "SEA-AD" = "syn73713778.1", # SEA-AD, ADKP harmonized, for GEN-A4 and GEN-B5
   # "GEN-A3" (AMP-PD) has a locally-downloaded file
   "GEN-A9" = "syn73713779.1", # SMIB-AD, ADKP Harmonized
   "GEN-A10" = "syn73713777.2", # MCMPS, ADKP Harmonized
@@ -171,32 +176,16 @@ if (!file.exists(amp_pd_local_filenames$main_file)) {
 
 # GEN-A4, GEN-B5 / SEA-AD ------------------------------------------------------
 
-# Uses SEA-AD metadata. The version of SEA-AD that is on Synapse is missing
-# Hispanic/Latino information that is present in the version released by the
-# Allen Institute on brain-map.org. We use the version on Synapse but pull in
-# the missing information from the AI version.
-
 meta_file <- synapse_download(syn_ids[["SEA-AD"]])
-
-sea_ad_file <- file.path("data", "downloads", "sea-ad_cohort_donor_metadata_072524.xlsx")
-download.file("https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/b4/c7/b4c727e1-ede1-4c61-b2ee-bf1ae4a3ef68/sea-ad_cohort_donor_metadata_072524.xlsx",
-  destfile = sea_ad_file
-)
-
-meta <- read.csv(meta_file$path, row.names = 1)
-meta_sea_ad <- read_xlsx(sea_ad_file)
+meta <- read.csv(meta_file$path)
 
 if (verbose) {
   colnames(meta)
-  colnames(meta_sea_ad)
 
-  print_qc(meta, pmi_col = "pmi", cerad_col = "CERAD", thal_col = "Thal.phase",
-           braak_nft_col = "Braak")
-  print_qc(meta_sea_ad, isHispanic_col = "Hispanic/Latino")
+  print_qc(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 }
 
-meta_new <- harmonize(spec$study$sea_ad, meta, spec,
-                      extra_metadata = meta_sea_ad)
+meta_new <- harmonize(spec$study$sea_ad, meta, spec)
 
 if (verbose) {
   print_qc(meta_new)

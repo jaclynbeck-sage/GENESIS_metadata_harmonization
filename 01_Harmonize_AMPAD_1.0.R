@@ -24,6 +24,7 @@ library(stringr)
 spec <- config::get(file = "GENESIS_harmonization.yml")
 source("util_functions.R")
 source("dataset_specific_functions.R")
+source(file.path("dataset_functions", "ADKP_datasets.R"))
 
 # All files are from the ADKP Harmonization Project, so they have been
 # harmonized and de-duplicated already and just need some minor edits to comply
