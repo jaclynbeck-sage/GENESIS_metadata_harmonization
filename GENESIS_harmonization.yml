@@ -17,7 +17,7 @@ default:
      "bScore_LB", "study"]
 
   diagnosis_columns:
-    ["AD", "BD", "Epilepsy", "HD", "LBD", "PD", "PSP", "SCZ",
+    ["AD", "BD", "DLBD", "Epilepsy", "HD", "PD", "PSP", "SCZ",
      "Tumor", "Vascular", "MCI", "Dementia", "Other", "Control"]
 
 

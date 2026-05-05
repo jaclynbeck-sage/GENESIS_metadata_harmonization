@@ -136,7 +136,9 @@ harmonize_MC_snRNA <- function(metadata, spec) {
 harmonize_MCMPS <- function(metadata, spec) {
   harmonize_ADKP_studies(metadata, spec) |>
     mutate(Epilepsy = make_binary_column(surgeryReason, "Epilepsy", spec),
-           Tumor = make_binary_column(surgeryReason, "Tumor", spec))
+           Tumor = make_binary_column(surgeryReason, "Tumor", spec),
+           # None of these are "controls" by GENESIS definition
+           Control = 0)
 }
 
 
@@ -181,7 +183,8 @@ harmonize_NPS_AD <- function(metadata, spec) {
         CDR <= 0.5 ~ 0,
         .default = NA
       )
-      # TODO Control column?
+      # Control column is not set due to the non-overlapping nature of diagnosis
+      # information between HBCC, MSBB, and ROSMAP.
     )
 }
 
@@ -261,7 +264,7 @@ harmonize_SEA_AD <- function(metadata, spec) {
       Dementia = make_binary_column(Cognitive.status, "Dementia", spec),
       Dementia = ifelse(dataset == "Reference", 0, Dementia),
 
-      LBD = ifelse(grepl("Lewy body disease", Consensus.clinical.diagnosis), 1, 0),
+      DLBD = ifelse(grepl("Lewy body disease", Consensus.clinical.diagnosis), 1, 0),
 
       # Other is 1 if the diagnosis has "Other" or "Multiple System Atrophy", or
       # if ADoutcome is "Other"

@@ -40,6 +40,5 @@ harmonize_McCarroll_SCZ <- function(metadata, spec) {
       # There are no missing values in the Schizophrenia field
       SCZ = make_binary_column(Schizophrenia, "Affected", spec),
       Control = make_binary_column(Schizophrenia, "Unaffected", spec)
-    ) |>
-    select(-Schizophrenia)
+    )
 }

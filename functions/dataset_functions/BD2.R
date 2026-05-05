@@ -80,9 +80,7 @@ harmonize_BD2 <- function(metadata, spec) {
                    1, 0),
       Other = ifelse(grepl("Schizoaffective", ClinConPrimDxText),
                      1, 0),
-      Control = ifelse(Dx == "Control" & is.na(ClinConPrimDxText) &
-                         is.na(ClinConSecDxText),
-                       1, 0)
+      Control = make_binary_column(Dx, "Control", spec)
       # TODO this study has a "BD_type" column
     )
 

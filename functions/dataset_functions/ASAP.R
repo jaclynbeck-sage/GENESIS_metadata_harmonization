@@ -175,8 +175,8 @@ harmonize_ASAP <- function(metadata, spec) {
       # The last_diagnosis field also has 24 individuals with mention of Lewy
       # bodies, however 22 of these individuals have gp2_phenotype = PD, and
       # the other two are AD and Control, so we ignore this field.
-      LBD = ifelse(grepl("Lewy body disease nos", path_autopsy_dx),
-                   1, 0),
+      DLBD = ifelse(grepl("Lewy body disease nos", path_autopsy_dx),
+                    1, 0),
 
       # Assume false if PSP not specified
       PSP = ifelse(grepl("Progressive supranuclear palsy", path_autopsy_dx),
@@ -198,9 +198,12 @@ harmonize_ASAP <- function(metadata, spec) {
         grepl("Cerebrovascular disease", path_autopsy_dx) ~ 1,
         .default = 0
       )
+
+      # Control field not set due to the level of inconsistencies and
+      # differences in diagnostic criteria between the studies in this data set
     )
 
-  # De-duplicate individuals within this data set, *NOT* with AMP-AD 1.0 / DivCo.
+  # De-duplicate individuals within this data set, *NOT* with NPS-AD.
   meta_new <- deduplicate_studies(
     list(meta_new), spec,
     include_cols = colnames(meta_new),

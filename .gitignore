@@ -50,3 +50,6 @@ rsconnect/
 
 # Output files
 *.csv
+data/
+downloads/
+tmp/
