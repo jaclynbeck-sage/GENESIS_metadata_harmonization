@@ -264,7 +264,7 @@ harmonize_SEA_AD <- function(metadata, spec) {
       Dementia = make_binary_column(Cognitive.status, "Dementia", spec),
       Dementia = ifelse(dataset == "Reference", 0, Dementia),
 
-      DLBD = ifelse(grepl("Lewy body disease", Consensus.clinical.diagnosis), 1, 0),
+      DLBD = ifelse(grepl("Lewy Body Disease", Consensus.clinical.diagnosis), 1, 0),
 
       # Other is 1 if the diagnosis has "Other" or "Multiple System Atrophy", or
       # if ADoutcome is "Other"

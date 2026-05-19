@@ -42,20 +42,22 @@ harmonize <- function(study_name, metadata, spec, nps_data = NULL) {
   # Study-specific harmonization
   metadata <- switch(
     study_name,
+    "AMP-AD_DiverseCohorts" = harmonize_Diverse_Cohorts(metadata, spec),
     "AMP-PD" = harmonize_AMP_PD(metadata, spec),
     "ASAP" = harmonize_ASAP(metadata, spec),
     "BD2" = harmonize_BD2(metadata, spec),
-    "AMP-AD_DiverseCohorts" = harmonize_Diverse_Cohorts(metadata, spec),
+    "CMC" = harmonize_PEC_CMC(metadata, spec),
     "MC-BrAD" = harmonize_MC_BrAD(metadata, spec),
     "MC_snRNA" = harmonize_MC_snRNA(metadata, spec),
-    "McCarroll_SCZ" = harmonize_McCarroll_SCZ(metadata, spec),
     "McCarroll_HD" = harmonize_McCarroll_HD(metadata, spec),
+    "McCarroll_SCZ" = harmonize_McCarroll_SCZ(metadata, spec),
     "MCMPS" = harmonize_MCMPS(metadata, spec),
     "MSBB" = harmonize_ADKP_studies(metadata, spec),
     "NPS-AD" = harmonize_NPS_AD(metadata, spec),
     "ROSMAP" = harmonize_ROSMAP(metadata, spec),
     "SEA-AD" = harmonize_SEA_AD(metadata, spec),
     "SMIB-AD" = harmonize_SMIB_AD(metadata, spec),
+    "SZBDMulti-Seq" = harmonize_PEC_SZBD(metadata, spec),
     .default = metadata
   )
 

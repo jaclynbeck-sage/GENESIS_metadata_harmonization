@@ -8,6 +8,8 @@
 #   GEN-A2 / ROSMAP
 #   GEN-A3 / AMP-PD
 #   GEN-A4 / SEA-AD
+#   GEN-A5 / CMC
+#   GEN-A6 / SZBDMulti-Seq
 #   GEN-A8 / snRNAseqAD_Trem2
 #   GEN-A9 / SMIB-AD
 #   GEN-A10 / MCMPS
@@ -21,6 +23,7 @@
 #   GEN-B5 / SEA-AD (multiome)
 #   GEN-B6 / MIT_ROSMAP_Multiomics
 #   GEN-B8 / BD2
+#   GEN-B11 / ROSMAP_CUIMC2
 
 library(synapser)
 library(dplyr)
@@ -40,20 +43,22 @@ for (file in helper_functions) {
 verbose <- FALSE
 
 syn_ids <- list(
-  "GEN-A1" = "syn73713770.2", # NPS-AD, ADKP Harmonized, for GEN-A1
-  "GEN-A2" = "syn73713768.1", # ROSMAP, ADKP Harmonized, for GEN-A2, GEN-A8, GEN-A13, GEN-B6
+  "GEN-A1" = "syn73713770.2", # NPS-AD, ADKP Harmonized
+  "GEN-A2" = "syn73713768.1", # ROSMAP, ADKP Harmonized, for GEN-A2, GEN-A8, GEN-A13, GEN-B6, GEN-B11
   # "GEN-A3" (AMP-PD) has a locally-downloaded file
   "GEN-A4" = "syn73713778.1", # SEA-AD, ADKP harmonized, for GEN-A4 and GEN-B5
+  # GEN-A5 (CMC) has a locally-downloaded file
+  # GEN-A6 (SZBDMulti-Seq) has a locally-downloaded file
   "GEN-A9" = "syn73713779.1", # SMIB-AD, ADKP Harmonized
   "GEN-A10" = "syn73713777.2", # MCMPS, ADKP Harmonized
   "GEN-A11" = "syn73713776.2", # MC_snRNA, ADKP Harmonized
   "GEN-A12" = "syn73713775.2", # MC-BrAD, ADKP Harmonized
-  # "GEN-A15" (ASAP) has a locally-downloaded file
+  # "GEN-A15" (ASAP) has locally-downloaded files
   # "GEN-A16" and "GEN-A17" (McCarroll SCZ and HD) have locally downloaded files
   # "GEN-B1" = "ADSP - TBD",
   # "GEN-B2" = "TBD - Diverse Cohorts again?",
   # "GEN-B3" = "TBD - ROSMAP Multiome again?"
-  "GEN-B4" = "syn73713769.3" # Diverse Cohorts, ADKP Harmonized, for GEN-B4
+  "GEN-B4" = "syn73713769.3" # Diverse Cohorts, ADKP Harmonized
   # "GEN-B8" (BD2) has a locally-downloaded file
 )
 
@@ -71,6 +76,11 @@ asap_local_filenames <- list(
 )
 
 bd2_local_filename <- file.path("data", "local_metadata", "BD2_metadata.csv")
+
+pec_local_filenames <- list(
+  "cmc" = file.path("data", "local_metadata", "snRNAseq_clinical_metadata_A5_PEC_Roussos.csv"),
+  "szbd" = file.path("data", "local_metadata", "snRNAseq_clinical_metadata_A6_PEC_RuzickaKellis.csv")
+)
 
 mccarroll_scz_file <- file.path("data", "local_metadata",
                                 "McCarroll_SZvillage_donorMetadata.txt")
@@ -123,7 +133,7 @@ manifest <- rbind(
 )
 
 
-# GEN-A2, GEN-A8, GEN-A13, GEN-B6 / ROSMAP -------------------------------------
+# GEN-A2, GEN-A8, GEN-A13, GEN-B6, GEN-B11 / ROSMAP ----------------------------
 # These GENESIS studies all use original ROSMAP metadata
 
 meta_file <- synapse_download(syn_ids[["GEN-A2"]])
@@ -140,7 +150,7 @@ if (verbose) {
   print_summary(meta_new)
 }
 
-cat("\nGEN-A2, A8, A13, B6 /", spec$study$rosmap, "\n")
+cat("\nGEN-A2, A8, A13, B6, B11 /", spec$study$rosmap, "\n")
 validate_values(meta_new, spec)
 
 new_filename <- write_metadata(meta_new, meta_file$name)
@@ -149,10 +159,10 @@ new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 manifest <- rbind(
   manifest,
   data.frame(
-    GENESIS_study = c("GEN-A2", "GEN-A8", "GEN-A13", "GEN-B6"),
+    GENESIS_study = c("GEN-A2", "GEN-A8", "GEN-A13", "GEN-B6", "GEN-B11"),
     study = c(
-      spec$study$rosmap, spec$study$snRNA_trem2,
-      spec$study$snRNA_BA10, spec$study$mit_rosmap
+      spec$study$rosmap, spec$study$snRNA_trem2, spec$study$snRNA_BA10,
+      spec$study$mit_rosmap, spec$study$cuimc2
     ),
     metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
   )
@@ -245,6 +255,90 @@ manifest <- rbind(
     metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
   )
 )
+
+
+# GEN-A5 / CMC (PsychENCODE) ---------------------------------------------------
+
+# NOTE: There are overlaps between CMC and NPS-AD individuals, but the way they
+# are named between the two studies is different. Per Jaro, we will wait until
+# he compiles a list of overlapping samples to de-duplicate.
+
+if (!file.exists(pec_local_filenames$cmc)) {
+  warning(str_glue("PsychENCODE file {pec_local_filenames$cmc} doesn't exist! ",
+                   "This dataset will be excluded from harmonization."))
+} else {
+  meta <- read.csv(pec_local_filenames$cmc)
+
+  if (verbose) {
+    colnames(meta)
+
+    print_summary(meta, sex_col = "reportedGender",
+                  isHispanic_col = "ethnicity", braak_nft_col = "Braak")
+  }
+
+  meta_new <- harmonize(spec$study$cmc, meta, spec)
+
+  if (verbose) {
+    print_summary(meta_new)
+  }
+
+  cat("\nGEN-A5 /", spec$study$cmc, "\n")
+  validate_values(meta_new, spec)
+
+  new_filename <- write_metadata(meta_new, basename(pec_local_filenames$cmc))
+  new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
+
+  manifest <- rbind(
+    manifest,
+    data.frame(
+      GENESIS_study = "GEN-A5",
+      study = spec$study$cmc,
+      metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
+    )
+  )
+}
+
+
+# GEN-A6 / SZBDMulti-Seq (PsychENCODE) -----------------------------------------
+
+# NOTE: There are overlaps between CMC and NPS-AD individuals, but the way they
+# are named between the two studies is different. Per Jaro, we will wait until
+# he compiles a list of overlapping samples to de-duplicate.
+
+if (!file.exists(pec_local_filenames$szbd)) {
+  warning(str_glue("PsychENCODE file {pec_local_filenames$szbd} doesn't exist! ",
+                   "This dataset will be excluded from harmonization."))
+} else {
+  meta <- read.csv(pec_local_filenames$szbd)
+
+  if (verbose) {
+    colnames(meta)
+
+    print_summary(meta, sex_col = "reportedGender",
+                  isHispanic_col = "ethnicity", braak_nft_col = "Braak")
+  }
+
+  meta_new <- harmonize(spec$study$szbd, meta, spec)
+
+  if (verbose) {
+    print_summary(meta_new)
+  }
+
+  cat("\nGEN-A6 /", spec$study$szbd, "\n")
+  validate_values(meta_new, spec)
+
+  new_filename <- write_metadata(meta_new, basename(pec_local_filenames$szbd))
+  new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
+
+  manifest <- rbind(
+    manifest,
+    data.frame(
+      GENESIS_study = "GEN-A6",
+      study = spec$study$szbd,
+      metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
+    )
+  )
+}
 
 
 # GEN-A9 / SMIB-AD -------------------------------------------------------------

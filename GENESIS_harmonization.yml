@@ -17,7 +17,7 @@ default:
      "bScore_LB", "study"]
 
   diagnosis_columns:
-    ["AD", "BD", "DLBD", "Epilepsy", "HD", "PD", "PSP", "SCZ",
+    ["AD", "BD", "DLBD", "Epilepsy", "HD", "MDD", "PD", "PSP", "SCZ",
      "Tumor", "Vascular", "MCI", "Dementia", "Other", "Control"]
 
 
@@ -162,6 +162,8 @@ default:
     amp_pd: "AMP-PD"
     asap: "ASAP"
     bd2: "BD2"
+    cmc: "CMC"
+    cuimc2: "ROSMAP_CUIMC2"
     diverse_cohorts: "AMP-AD_DiverseCohorts"
     mayo: "MayoRNAseq"
     mc_brad: "MC-BrAD"
@@ -177,6 +179,7 @@ default:
     smib_ad: "SMIB-AD"
     snRNA_BA10: "snRNAseqPFC_BA10"
     snRNA_trem2: "snRNAseqAD_TREM2"
+    szbd: "SZBDMulti-Seq"
 
   ## Diagnosis column values ---------------------------------------------------
 
