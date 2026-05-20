@@ -176,6 +176,7 @@ default:
     nps_ad: "NPS-AD"
     rosmap: "ROSMAP"
     sea_ad: "SEA-AD"
+    sea_ad_multi: "SEA-AD_multiome"
     smib_ad: "SMIB-AD"
     snRNA_BA10: "snRNAseqPFC_BA10"
     snRNA_trem2: "snRNAseqAD_TREM2"

@@ -14,7 +14,7 @@
 # * Change `sex` values to all lower case
 # * Add `dataContributionGroup` = "Broad Institute"
 # * Add `cohort` = "HBTRC"
-# * Harmonize `Status` column into binary `HD` and `Control` columns
+# * Convert `Status` column into a binary `HD` column
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -40,7 +40,6 @@ harmonize_McCarroll_HD <- function(metadata, spec) {
       dataContributionGroup = spec$dataContributionGroup$broad,
       cohort = spec$cohort$harvard,
       # Binary diagnosis columns
-      HD = make_binary_column(Status, "Case", spec),
-      Control = make_binary_column(Status, "Control", spec)
+      HD = make_binary_column(Status, "Case", spec)
     )
 }

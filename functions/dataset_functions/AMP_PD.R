@@ -89,8 +89,7 @@ harmonize_AMP_PD <- function(metadata, spec) {
         "UM" ~ spec$dataContributionGroup$umiami,
         .default = dataContributionGroup
       ),
-      # Binary diagnosis columns
-      PD = make_binary_column(Info.Diagnosis, "PD", spec),
-      Control = make_binary_column(Info.Diagnosis, "Control", spec)
+      # Binary diagnosis column
+      PD = make_binary_column(Info.Diagnosis, "PD", spec)
     )
 }

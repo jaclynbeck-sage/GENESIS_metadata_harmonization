@@ -13,7 +13,7 @@
 # * Change `sex` values to all lower case
 # * Add `dataContributionGroup` = "Broad Institute"
 # * Add `cohort` = "HBTRC"
-# * Harmonize `Schizophrenia` diagnosis into binary `SCZ` and `Control` columns
+# * Convert `Schizophrenia` diagnosis into a binary `SCZ` column
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -38,7 +38,6 @@ harmonize_McCarroll_SCZ <- function(metadata, spec) {
       dataContributionGroup = spec$dataContributionGroup$broad,
       cohort = spec$cohort$harvard,
       # There are no missing values in the Schizophrenia field
-      SCZ = make_binary_column(Schizophrenia, "Affected", spec),
-      Control = make_binary_column(Schizophrenia, "Unaffected", spec)
+      SCZ = make_binary_column(Schizophrenia, "Affected", spec)
     )
 }

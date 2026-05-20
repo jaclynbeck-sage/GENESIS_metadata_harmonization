@@ -124,7 +124,7 @@ deduplicate_studies <- function(df_list,
 
         # The ageDeath/PMI validation function will print out the string if
         # there's a mismatch. All other columns should print out here.
-        if (verbose) {
+        if (verbose && !(col_name %in% c("ageDeath", "PMI"))) {
           cat(report_string)
         }
 
@@ -155,6 +155,13 @@ deduplicate_studies <- function(df_list,
           } else if (col_name %in% c("ageDeath", "PMI")) {
             meta_tmp <- deduplicate_ageDeath_pmi(meta_tmp, leftover, col_name, report_string)
 
+          } else if (col_name %in% spec$diagnosis_columns &&
+                     "BD2" %in% meta_tmp$study &&
+                     !is.na(meta_tmp[meta_tmp$study == "BD2", col_name])) {
+            # TODO TEMPORARY: If BD2 and NPS-AD disagree on diagnosis, use the
+            # BD2 value until NPS-AD's metadata is updated again with the correct values
+            print(meta_tmp[, c("individualID", "study", col_name)])
+            meta_tmp[, col_name] <- meta_tmp[meta_tmp$study == "BD2", col_name]
           } else {
             # Column is something else that we don't have specific handling for,
             # so we report it but don't try to resolve duplication.
@@ -188,8 +195,8 @@ deduplicate_studies <- function(df_list,
 # that are assigned to this individual. This function checks whether the numbers
 # differ only by precision (e.g. 3.5 vs 3.547), or if the numbers are completely
 # different (e.g. 4 vs 10). In the former case, the value from NPS-AD is used if
-# it exists, otherwise differences are ignored. The latter case will be reported
-# to the console but no modifications will be made.
+# it exists, otherwise the smallest value will be used. The latter case will be
+# reported to the console but no modifications will be made.
 #
 # Arguments:
 #   meta_tmp - a data frame with 2 or more rows, where all rows have the same
@@ -212,7 +219,7 @@ deduplicate_ageDeath_pmi <- function(meta_tmp, leftover, col_name, report_string
   num_vals <- suppressWarnings(as.numeric(leftover)) |>
     na.omit()
 
-  equivalent <- sapply(num_vals, all.equal, num_vals[1], tolerance = 1e-3)
+  equivalent <- sapply(num_vals, all.equal, num_vals[1], tolerance = 1e-1)
 
   # If there's a real mismatch, try using the NPS-AD value if it exists. If not,
   # report the mismatch. `num_vals` should have one unique value if all numbers
@@ -230,14 +237,18 @@ deduplicate_ageDeath_pmi <- function(meta_tmp, leftover, col_name, report_string
     }
   } else if (length(leftover) != ncol(meta_tmp)) {
     # No real mismatch but at least one value was NA and there are multiple
-    # close-enough values. Use NPS-AD value if it exists. Otherwise print.
+    # close-enough values. Preferentially use NPS-AD value if it exists.
+    # Otherwise, use the smallest PMI. If the code reaches here, all values in
+    # num_vals are already guaranteed to be within 0.1 of each other so choosing
+    # the smallest PMI is an arbitrary decision.
     na_vals <- which(is.na(meta_tmp[, col_name]))
 
     if ("NPS-AD" %in% meta_tmp$study &&
-             !is.na(meta_tmp[meta_tmp$study == "NPS-AD", col_name])) {
+        !is.na(meta_tmp[meta_tmp$study == "NPS-AD", col_name])) {
       meta_tmp[na_vals, col_name] <- meta_tmp[meta_tmp$study == "NPS-AD", col_name]
+
     } else {
-      cat("Unresolved NA fill: ", report_string)
+      meta_tmp[na_vals, col_name] <- min(num_vals)
     }
   }
 

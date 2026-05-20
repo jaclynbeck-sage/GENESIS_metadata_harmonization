@@ -81,41 +81,38 @@ harmonize_ADKP_studies <- function(metadata, spec) {
 harmonize_Diverse_Cohorts <- function(metadata, spec) {
   harmonize_ADKP_studies(metadata, spec) |>
     mutate(AD = make_binary_column(ADoutcome, "AD", spec),
-           Other = make_binary_column(ADoutcome, "Other", spec),
-           Control = make_binary_column(ADoutcome, "Control", spec))
+           Other = make_binary_column(ADoutcome, "Other", spec))
 }
 
 
 # Harmonize MC-BrAD data
 #
-# Calls harmonize_ADKP_studies and then creates binary `PSP` and `Control`
-# diagnosis columns that are based on the `diagnosis` field. The study
-# documentation verified that control samples have no diagnosis of any of the
-# common neuropathological disorders like AD, PD, HD, etc.
+# Calls harmonize_ADKP_studies and then creates a binary `PSP` column that is
+# based on the `diagnosis` field. The study documentation verified that control
+# samples have no diagnosis of any of the common neuropathological disorders
+# like AD, PD, HD, etc.
 #
 # Source file: syn73713775 (version 2) on Synapse
 #
 harmonize_MC_BrAD <- function(metadata, spec) {
   harmonize_ADKP_studies(metadata, spec) |>
-    mutate(PSP = make_binary_column(diagnosis, "progressive supranuclear palsy", spec),
-           Control = make_binary_column(diagnosis, "control", spec))
+    mutate(PSP = make_binary_column(diagnosis, "progressive supranuclear palsy", spec))
 }
 
 
 # Harmonize MC_snRNA data
 #
-# Calls harmonize_ADKP_studies and then creates binary `AD` and `Control`
-# diagnosis columns that are based on the `diagnosis` column. This study has no
-# non-missing amyCerad values and only a few non-missing Thal values, so
-# diagnosis cannot be determined based on pathology. The diagnosis supplied in
-# the `diagnosis` field is used instead.
+# Calls harmonize_ADKP_studies and then creates a binary `AD` column that is
+# based on the `diagnosis` column. This study has no non-missing amyCerad values
+# and only a few non-missing Thal values, so diagnosis cannot be determined
+# based on pathology. The diagnosis supplied in the `diagnosis` field is used
+# instead.
 #
 # Source file: syn73713776 (version 2) on Synapse
 #
 harmonize_MC_snRNA <- function(metadata, spec) {
   harmonize_ADKP_studies(metadata, spec) |>
-    mutate(AD = make_binary_column(diagnosis, "Alzheimer Disease", spec),
-           Control = make_binary_column(diagnosis, "Control", spec))
+    mutate(AD = make_binary_column(diagnosis, "Alzheimer Disease", spec))
 }
 
 
@@ -136,9 +133,7 @@ harmonize_MC_snRNA <- function(metadata, spec) {
 harmonize_MCMPS <- function(metadata, spec) {
   harmonize_ADKP_studies(metadata, spec) |>
     mutate(Epilepsy = make_binary_column(surgeryReason, "Epilepsy", spec),
-           Tumor = make_binary_column(surgeryReason, "Tumor", spec),
-           # None of these are "controls" by GENESIS definition
-           Control = 0)
+           Tumor = make_binary_column(surgeryReason, "Tumor", spec))
 }
 
 
@@ -183,8 +178,6 @@ harmonize_NPS_AD <- function(metadata, spec) {
         CDR <= 0.5 ~ 0,
         .default = NA
       )
-      # Control column is not set due to the non-overlapping nature of diagnosis
-      # information between HBCC, MSBB, and ROSMAP.
     )
 }
 
@@ -194,11 +187,6 @@ harmonize_NPS_AD <- function(metadata, spec) {
 # Calls harmonize_ADKP_studies and then creates binary `AD` and `Other`
 # diagnosis columns based on the ADoutcome variable.
 # Binary `MCI` and `Dementia` columns are created based on the dcfdx_lv variable.
-# The binary `Control` diagnosis column is based on all of the other diagnosis
-# columns:
-#   1 if all the other columns are 0,
-#   0 if there is a 1 in any other column,
-#   NA if any column has an NA value
 #
 # Note: There are two cognitive status columns (dcfdx_lv and cogdx) with the
 # same coding:
@@ -228,16 +216,7 @@ harmonize_ROSMAP <- function(metadata, spec) {
       Dementia = case_match(dcfdx_lv,
                             c(4, 5, 6) ~ 1, # 4, 5, and 6 = Dementia
                             c(1, 2, 3) ~ 0,
-                            .default = NA),
-      # Only mark someone as Control if they don't have a 1 in any of the above
-      # diagnosis columns. NA values in any of these columns propagate as NA in
-      # the Control column.
-      tmp_sum = AD + Other + MCI + Dementia,
-      Control = case_when(
-        tmp_sum == 0 ~ 1,
-        tmp_sum > 0 ~ 0,
-        .default = NA
-      )
+                            .default = NA)
     ) |>
     select(-tmp_sum)
 }
@@ -255,48 +234,41 @@ harmonize_SEA_AD <- function(metadata, spec) {
       ADoutcome = determineADoutcome(.data, spec),
       # Reference samples have missing Braak/Cerad but should have a "Control" ADoutcome
       ADoutcome = ifelse(dataset == "Reference", "Control", ADoutcome),
+
       # Binary diagnosis columns
       AD = make_binary_column(ADoutcome, "AD", spec),
-      PD = ifelse(grepl("Parkinsons Disease", Consensus.clinical.diagnosis), 1, 0),
-      MCI = ifelse(grepl("MCI", Consensus.clinical.diagnosis), 1, 0),
+      PD = grep_to_binary_column(Consensus.clinical.diagnosis, "Parkinsons Disease"),
+      MCI = grep_to_binary_column(Consensus.clinical.diagnosis, "MCI"),
 
       # Reference samples end up with NA Dementia values, change to 0
       Dementia = make_binary_column(Cognitive.status, "Dementia", spec),
       Dementia = ifelse(dataset == "Reference", 0, Dementia),
 
-      DLBD = ifelse(grepl("Lewy Body Disease", Consensus.clinical.diagnosis), 1, 0),
+      DLBD = grep_to_binary_column(Consensus.clinical.diagnosis, "Lewy Body Disease"),
 
       # Other is 1 if the diagnosis has "Other" or "Multiple System Atrophy", or
       # if ADoutcome is "Other"
-      Other = ifelse(grepl("Other|Multiple System Atrophy", Consensus.clinical.diagnosis), 1, 0),
+      Other = grep_to_binary_column(Consensus.clinical.diagnosis, "^Other|Multiple System Atrophy"),
       Other = ifelse(ADoutcome == "Other", 1, Other),
 
-      Tumor = ifelse(grepl("brain mets", Consensus.clinical.diagnosis), 1, 0),
-      Vascular = ifelse(grepl("Vascular Dementia", Consensus.clinical.diagnosis), 1, 0),
-
-      # Control is 1 if Consensus.clinical.diagnosis = "Control" AND
-      # ADoutcome = "Control".
-      # Reference samples end up with NA Control values, change to 1.
-      Control = make_binary_column(Consensus.clinical.diagnosis, "Control", spec),
-      Control = ifelse(ADoutcome != "Control", 0, Control),
-      Control = ifelse(dataset == "Reference", 1, Control)
+      Tumor = grep_to_binary_column(Consensus.clinical.diagnosis, "brain mets"),
+      Vascular = grep_to_binary_column(Consensus.clinical.diagnosis, "Vascular Dementia")
     )
 }
 
 
 # Harmonize SMIB-AD metadata
 #
-# Calls harmonize_ADKP_studies and then creates binary `AD` and `Control`
-# diagnosis columns that are based on the `diagnosis` column. This study has no
-# non-missing amyCerad values and only a few non-missing Thal values, so
-# diagnosis cannot be determined based on pathology. The diagnosis supplied in
-# the `diagnosis` field is used instead.
+# Calls harmonize_ADKP_studies and then creates a binary `AD` column that is
+# based on the `diagnosis` column. This study has no non-missing amyCerad values
+# and only a few non-missing Thal values, so diagnosis cannot be determined
+# based on pathology. The diagnosis supplied in the `diagnosis` field is used
+# instead.
 #
 # Source file: syn73713779 (version 1) on Synapse
 #
 harmonize_SMIB_AD <- function(metadata, spec) {
   harmonize_ADKP_studies(metadata, spec) |>
-    mutate(AD = make_binary_column(diagnosis, "Alzheimer Disease", spec),
-           Control = make_binary_column(diagnosis, "no cognitive impairment", spec))
+    mutate(AD = make_binary_column(diagnosis, "Alzheimer Disease", spec))
 }
 

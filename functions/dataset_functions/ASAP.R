@@ -175,12 +175,10 @@ harmonize_ASAP <- function(metadata, spec) {
       # The last_diagnosis field also has 24 individuals with mention of Lewy
       # bodies, however 22 of these individuals have gp2_phenotype = PD, and
       # the other two are AD and Control, so we ignore this field.
-      DLBD = ifelse(grepl("Lewy body disease nos", path_autopsy_dx),
-                    1, 0),
+      DLBD = grep_to_binary_column(path_autopsy_dx, "Lewy body disease nos"),
 
       # Assume false if PSP not specified
-      PSP = ifelse(grepl("Progressive supranuclear palsy", path_autopsy_dx),
-                   1, 0),
+      PSP = grep_to_binary_column(path_autopsy_dx, "Progressive supranuclear palsy"),
 
       # There are no missing primary_diagnosis values
       Other = case_when(
@@ -194,13 +192,7 @@ harmonize_ASAP <- function(metadata, spec) {
       Dementia = make_binary_column(cognitive_status, "Dementia", spec),
 
       # Assume false if Cerebrovascular disease is not listed
-      Vascular = case_when(
-        grepl("Cerebrovascular disease", path_autopsy_dx) ~ 1,
-        .default = 0
-      )
-
-      # Control field not set due to the level of inconsistencies and
-      # differences in diagnostic criteria between the studies in this data set
+      Vascular = grep_to_binary_column(path_autopsy_dx, "Cerebrovascular disease")
     )
 
   # De-duplicate individuals within this data set, *NOT* with NPS-AD.

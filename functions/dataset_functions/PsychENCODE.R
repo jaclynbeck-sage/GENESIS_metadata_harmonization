@@ -10,7 +10,7 @@
 #     * `individualIdSource` => `cohort`
 #     * `Braak` => `Braak_NFT`
 #   * Convert Braak_NFT from numeric to Roman numerals
-#   * Create binary diagnosis columns for BD, SCZ, Control
+#   * Create binary diagnosis columns for BD and SCZ
 #   * Update `cohort` values to conform to the data dictionary
 #   * Create `dataContributionGroup` based on `cohort`
 harmonize_PEC <- function(metadata, spec) {
@@ -36,8 +36,7 @@ harmonize_PEC <- function(metadata, spec) {
       BD = make_binary_column(primaryDiagnosis,
                               c("Bipolar disorder", "Bipolar Disorder"),
                               spec),
-      SCZ = make_binary_column(primaryDiagnosis, "Schizophrenia", spec),
-      Control = (BD + SCZ == 0)
+      SCZ = make_binary_column(primaryDiagnosis, "Schizophrenia", spec)
     )
 }
 

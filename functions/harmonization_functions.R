@@ -38,7 +38,7 @@ for (file in dataset_functions) {
 #   a `data.frame` with all relevant fields harmonized to the GENESIS data
 #   dictionary. Columns not defined in the data dictionary are left as-is.
 #
-harmonize <- function(study_name, metadata, spec, nps_data = NULL) {
+harmonize <- function(study_name, metadata, spec) {
   # Study-specific harmonization
   metadata <- switch(
     study_name,
@@ -94,24 +94,6 @@ harmonize <- function(study_name, metadata, spec, nps_data = NULL) {
       # Add study name
       study = study_name
     )
-
-  # If applicable, pull missing information from NPS-AD metadata
-  if (!is.null(nps_data)) {
-    metadata <- deduplicate_studies(
-      list(metadata, nps_data),
-      spec,
-      verbose = FALSE
-    ) |>
-      subset(study == study_name) |>
-      select(all_of(colnames(metadata)))
-
-    # Extra step for BD2, which had individualID modified to match NPS-AD IDs
-    # in the BD2 harmonization function
-    if (study_name == spec$study$bd2) {
-      metadata$individualID <- metadata$bd2_id
-      metadata <- select(metadata, -bd2_id)
-    }
-  }
 
   # Put harmonized fields first in the data frame
   all_columns <- c(spec$demographic_columns, spec$diagnosis_columns)
@@ -415,6 +397,8 @@ determineADoutcome <- function(.data, spec) {
 
 # Turn a text column into a binary 1/0 diagnosis column ------------------------
 
+# Make a binary column from categorical values
+#
 # This function takes a column of text values and assigns binary values based on
 # whether they match a target value. For every value in the column, the binary
 # version becomes:
@@ -436,4 +420,27 @@ make_binary_column <- function(column_values, true_value, spec) {
              true_value ~ 1,
              c(spec$missing, NA) ~ NA,
              .default = 0)
+}
+
+
+# Make a binary column by grepping for patterns
+#
+# This function takes a column of text values and assigns binary values based on
+# whether they contain a target pattern. For every value in the column, the
+# binary version becomes:
+#   1 if the value contains the pattern
+#   0 if the value doesn't contain the pattern
+#
+# Upper/lowercase differences are ignored.
+#
+# Arguments:
+#   column_values - a column of values from a data frame
+#   pattern - the pattern to search for in each string
+#
+# Returns:
+#   a column of values that have been standardized to 1 and 0 based on the
+#   contents of column_values
+grep_to_binary_column <- function(column_values, pattern) {
+  grepl(pattern, column_values, ignore.case = TRUE) |>
+    as.numeric()
 }

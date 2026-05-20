@@ -21,7 +21,6 @@
 #   * Change `dataContributionGroup` "UPitt" to "University of Pittsburgh"
 #   * Harmonize the `Dx` column into a binary `BD` column
 #   * Harmonize the `ClinConPrimDxText` into a binary `SCZ` column
-#   * Create a binary `Control` column based on `Dx` and `ClinConPrimDxText`
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -34,7 +33,7 @@
 #   dictionary. Columns not defined in the data dictionary are left as-is.
 #
 harmonize_BD2 <- function(metadata, spec) {
-  meta_new <- metadata |>
+  metadata |>
     dplyr::rename(
       individualID = SubNum,
       dataContributionGroup = Brain_bank,
@@ -73,27 +72,13 @@ harmonize_BD2 <- function(metadata, spec) {
       # their non-missing values to pull out diagnoses for SCZ, MDD, and OTHER
       # and assume missing values mean no diagnosis for those diseases.
       BD = make_binary_column(Dx, "BD", spec),
-      SCZ = ifelse(grepl("Schizophrenia", ClinConPrimDxText),
-                   1, 0),
-      MDD = ifelse(grepl("Major depressive disorder", ClinConPrimDxText) |
-                     grepl("Major depressive disorder", ClinConSecDxText),
-                   1, 0),
-      Other = ifelse(grepl("Schizoaffective", ClinConPrimDxText),
-                     1, 0),
-      Control = make_binary_column(Dx, "Control", spec)
+      SCZ = grep_to_binary_column(ClinConPrimDxText, "Schizophrenia"),
+
+      # Major depressive disorder might be in either column so we paste them
+      # together and pattern match
+      MDD = grep_to_binary_column(paste(ClinConPrimDxText, ClinConSecDxText),
+                                  "Major depressive disorder"),
+      Other = grep_to_binary_column(ClinConPrimDxText, "Schizoaffective")
       # TODO this study has a "BD_type" column
     )
-
-  # Modification for de-duplication in the main harmonization function
-  meta_new <- meta_new |>
-    mutate(
-      bd2_id = individualID,
-      individualID = case_when(
-        nchar(Synapse_GENESIS) > 0 ~ Synapse_GENESIS,
-        nchar(Synapse_MSSM) > 0 ~ Synapse_MSSM,
-        .default = as.character(individualID)
-      )
-    )
-
-  return(meta_new)
 }
