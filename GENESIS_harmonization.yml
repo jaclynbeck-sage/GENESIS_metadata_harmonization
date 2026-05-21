@@ -162,10 +162,9 @@ default:
     amp_pd: "AMP-PD"
     asap: "ASAP"
     bd2: "BD2"
-    cmc: "CMC"
+    cmc: "PEC_CMC"
     cuimc2: "ROSMAP_CUIMC2"
     diverse_cohorts: "AMP-AD_DiverseCohorts"
-    mayo: "MayoRNAseq"
     mc_brad: "MC-BrAD"
     mc_snrna: "MC_snRNA"
     mccarroll_scz: "McCarroll_SCZ"
@@ -180,7 +179,7 @@ default:
     smib_ad: "SMIB-AD"
     snRNA_BA10: "snRNAseqPFC_BA10"
     snRNA_trem2: "snRNAseqAD_TREM2"
-    szbd: "SZBDMulti-Seq"
+    szbd: "PEC_SZBDMulti-Seq"
 
   ## Diagnosis column values ---------------------------------------------------
 

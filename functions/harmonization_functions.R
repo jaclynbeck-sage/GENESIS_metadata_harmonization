@@ -52,7 +52,6 @@ harmonize <- function(study_name, metadata, spec) {
     "McCarroll_HD" = harmonize_McCarroll_HD(metadata, spec),
     "McCarroll_SCZ" = harmonize_McCarroll_SCZ(metadata, spec),
     "MCMPS" = harmonize_MCMPS(metadata, spec),
-    "MSBB" = harmonize_ADKP_studies(metadata, spec),
     "NPS-AD" = harmonize_NPS_AD(metadata, spec),
     "ROSMAP" = harmonize_ROSMAP(metadata, spec),
     "SEA-AD" = harmonize_SEA_AD(metadata, spec),

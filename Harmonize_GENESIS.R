@@ -31,6 +31,7 @@ library(purrr)
 library(stringr)
 
 spec <- config::get(file = "GENESIS_harmonization.yml")
+studies <- config::get(file = "GENESIS_study_spec.yml")
 
 # Source all the helper function scripts
 helper_functions <- list.files("functions", pattern = "\\.R", full.names = TRUE)
@@ -42,58 +43,10 @@ for (file in helper_functions) {
 # FALSE will only print the status of the harmonized metadata for each dataset.
 verbose <- FALSE
 
-syn_ids <- list(
-  "GEN-A1" = "syn73713770.2", # NPS-AD, ADKP Harmonized
-  "GEN-A2" = "syn73713768.1", # ROSMAP, ADKP Harmonized, for GEN-A2, GEN-A8, GEN-A13, GEN-B6, GEN-B11
-  # "GEN-A3" (AMP-PD) has a locally-downloaded file
-  "GEN-A4" = "syn73713778.1", # SEA-AD, ADKP harmonized, for GEN-A4 and GEN-B5
-  # GEN-A5 (CMC) has a locally-downloaded file
-  # GEN-A6 (SZBDMulti-Seq) has a locally-downloaded file
-  "GEN-A9" = "syn73713779.1", # SMIB-AD, ADKP Harmonized
-  "GEN-A10" = "syn73713777.2", # MCMPS, ADKP Harmonized
-  "GEN-A11" = "syn73713776.2", # MC_snRNA, ADKP Harmonized
-  "GEN-A12" = "syn73713775.2", # MC-BrAD, ADKP Harmonized
-  # "GEN-A15" (ASAP) has locally-downloaded files
-  # "GEN-A16" and "GEN-A17" (McCarroll SCZ and HD) have locally downloaded files
-  # "GEN-B1" = "ADSP - TBD",
-  # "GEN-B2" = "TBD - Diverse Cohorts again?",
-  # "GEN-B3" = "TBD - ROSMAP Multiome again?"
-  "GEN-B4" = "syn73713769.3" # Diverse Cohorts, ADKP Harmonized
-  # "GEN-B8" (BD2) has a locally-downloaded file
-)
-
-## Local files
-
-amp_pd_local_filenames <- list(
-  "main_file" = file.path("data", "local_metadata", "AMP-PD_donor_metadata.csv"),
-  "demographics" = file.path("data", "local_metadata",
-                             "releases_2023_v4release_1027_clinical_Demographics.csv")
-)
-
-asap_local_filenames <- list(
-  "clinical" = file.path("data", "local_metadata", "ASAP_clinpath-export-2026-04-28.csv"),
-  "subject" = file.path("data", "local_metadata", "ASAP_subject-export-2026-04-28.csv")
-)
-
-bd2_local_filename <- file.path("data", "local_metadata", "BD2_metadata.csv")
-
-pec_local_filenames <- list(
-  "cmc" = file.path("data", "local_metadata", "snRNAseq_clinical_metadata_A5_PEC_Roussos.csv"),
-  "szbd" = file.path("data", "local_metadata", "snRNAseq_clinical_metadata_A6_PEC_RuzickaKellis.csv")
-)
-
-mccarroll_scz_file <- file.path("data", "local_metadata",
-                                "McCarroll_SZvillage_donorMetadata.txt")
-
-mccarroll_hd_file <- file.path("data", "local_metadata",
-                               "McCarroll_HD_donor_metadata.txt")
-
-##
-
+syn_ids <- sapply(studies, "[[", "syn_id") |> unlist() |> na.omit()
 check_new_versions(syn_ids)
 
 manifest <- c()
-
 datasets <- list()
 
 
@@ -102,7 +55,7 @@ datasets <- list()
 # This dataset has overlap with BD2, ROSMAP, and Diverse Cohorts, and is used to
 # fill in missing values in these studies.
 
-meta_file <- synapse_download(syn_ids[["GEN-A1"]])
+meta_file <- synapse_download(studies$nps_ad$syn_id)
 meta <- read.csv(meta_file$path)
 
 if (verbose) {
@@ -110,16 +63,16 @@ if (verbose) {
   print_summary(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 }
 
-meta_new <- harmonize(spec$study$nps_ad, meta, spec)
+meta_new <- harmonize(studies$nps_ad$name, meta, spec)
 
 if (verbose) {
   print_summary(meta_new)
 }
 
-cat("\nGEN-A1 /", spec$study$nps_ad, "\n")
+cat("\n", studies$nps_ad$gen_name, "/", studies$nps_ad$name, "\n")
 validate_values(meta_new, spec)
 
-datasets[[spec$study$nps_ad]] <- meta_new
+datasets[[studies$nps_ad$name]] <- meta_new
 
 new_filename <- write_metadata(meta_new, meta_file$name)
 new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
@@ -127,8 +80,8 @@ new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 manifest <- rbind(
   manifest,
   data.frame(
-    GENESIS_study = "GEN-A1",
-    study = spec$study$nps_ad,
+    GENESIS_study = studies$nps_ad$gen_name,
+    study = studies$nps_ad$name,
     metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
   )
 )
@@ -137,7 +90,7 @@ manifest <- rbind(
 # GEN-A2, GEN-A8, GEN-A13, GEN-B6, GEN-B11 / ROSMAP ----------------------------
 # These GENESIS studies all use original ROSMAP metadata
 
-meta_file <- synapse_download(syn_ids[["GEN-A2"]])
+meta_file <- synapse_download(studies$rosmap$syn_id)
 meta <- read.csv(meta_file$path)
 
 if (verbose) {
@@ -145,45 +98,45 @@ if (verbose) {
   print_summary(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 }
 
-meta_new <- harmonize(spec$study$rosmap, meta, spec)
+meta_new <- harmonize(studies$rosmap$name, meta, spec)
 
 if (verbose) {
   print_summary(meta_new)
 }
 
-cat("\nGEN-A2, A8, A13, B6, B11 /", spec$study$rosmap, "\n")
+cat("\n", studies$rosmap$gen_name, "/", studies$rosmap$name, "\n")
 validate_values(meta_new, spec)
 
-datasets[[spec$study$rosmap]] <- meta_new
+datasets[[studies$rosmap$name]] <- meta_new
 
 new_filename <- write_metadata(meta_new, meta_file$name)
 new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
-manifest <- rbind(
-  manifest,
-  data.frame(
-    GENESIS_study = c("GEN-A2", "GEN-A8", "GEN-A13", "GEN-B6", "GEN-B11"),
-    study = c(
-      spec$study$rosmap, spec$study$snRNA_trem2, spec$study$snRNA_BA10,
-      spec$study$mit_rosmap, spec$study$cuimc2
-    ),
-    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
-  )
-)
+ros_studies <- lapply(
+  list(studies$rosmap, studies$snRNA_trem2, studies$snRNA_BA10,
+       studies$mit_rosmap, studies$cuimc2),
+  as.data.frame
+) |>
+  list_rbind() |>
+  select(-syn_id) |>
+  dplyr::rename(study = name, GENESIS_study = gen_name) |>
+  mutate(metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber))
+
+manifest <- rbind(manifest, ros_studies)
 
 
 # GEN-A3 / AMP-PD --------------------------------------------------------------
 
 # AMP-PD data, uses locally-downloaded files that are not on Synapse
-if (!file.exists(amp_pd_local_filenames$main_file)) {
-  warning(str_glue("AMP-PD file {amp_pd_local_filenames$main_file} doesn't ",
+if (!file.exists(studies$amp_pd$local_files$main)) {
+  warning(str_glue("AMP-PD file {studies$amp_pd$local_files$main} doesn't ",
                    "exist! This dataset will be excluded from harmonization."))
-} else if (!file.exists(amp_pd_local_filenames$demographics)) {
-  warning(str_glue("AMP-PD file {amp_pd_local_filenames$demographics} doesn't ",
+} else if (!file.exists(studies$amp_pd$local_files$demographics)) {
+  warning(str_glue("AMP-PD file {studies$amp_pd$local_files$demographics} doesn't ",
                    "exist! This dataset will be excluded from harmonization."))
 } else {
-  meta <- read.csv(amp_pd_local_filenames$main_file)
-  demographics <- read.csv(amp_pd_local_filenames$demographics) |>
+  meta <- read.csv(studies$amp_pd$local_files$main)
+  demographics <- read.csv(studies$amp_pd$local_files$demographics) |>
     select(participant_id, race, ethnicity)
 
   meta <- merge(meta, demographics)
@@ -204,25 +157,25 @@ if (!file.exists(amp_pd_local_filenames$main_file)) {
     )
   }
 
-  meta_new <- harmonize(spec$study$amp_pd, meta, spec)
+  meta_new <- harmonize(studies$amp_pd$name, meta, spec)
 
   if (verbose) {
     print_summary(meta_new)
   }
 
-  cat("\nGEN-A3 /", spec$study$amp_pd, "\n")
+  cat("\n", studies$amp_pd$gen_name, "/", studies$amp_pd$name, "\n")
   validate_values(meta_new, spec)
 
-  datasets[[spec$study$amp_pd]] <- meta_new
+  datasets[[studies$amp_pd$name]] <- meta_new
 
-  new_filename <- write_metadata(meta_new, basename(amp_pd_local_filenames$main_file))
+  new_filename <- write_metadata(meta_new, basename(studies$amp_pd$local_files$main))
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
   manifest <- rbind(
     manifest,
     data.frame(
-      GENESIS_study = "GEN-A3",
-      study = spec$study$amp_pd,
+      GENESIS_study = studies$amp_pd$gen_name,
+      study = studies$amp_pd$name,
       metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
     )
   )
@@ -231,7 +184,7 @@ if (!file.exists(amp_pd_local_filenames$main_file)) {
 
 # GEN-A4, GEN-B5 / SEA-AD ------------------------------------------------------
 
-meta_file <- synapse_download(syn_ids[["GEN-A4"]])
+meta_file <- synapse_download(studies$sea_ad$syn_id)
 meta <- read.csv(meta_file$path)
 
 if (verbose) {
@@ -240,16 +193,16 @@ if (verbose) {
   print_summary(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 }
 
-meta_new <- harmonize(spec$study$sea_ad, meta, spec)
+meta_new <- harmonize(studies$sea_ad$name, meta, spec)
 
 if (verbose) {
   print_summary(meta_new)
 }
 
-cat("\nGEN-A4 & B5 /", spec$study$sea_ad, "\n")
+cat("\n", studies$sea_ad$gen_name, "/", studies$sea_ad$name, "\n")
 validate_values(meta_new, spec)
 
-datasets[[spec$study$sea_ad]] <- meta_new
+datasets[[studies$sea_ad$name]] <- meta_new
 
 new_filename <- write_metadata(meta_new, meta_file$name)
 new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
@@ -257,8 +210,8 @@ new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 manifest <- rbind(
   manifest,
   data.frame(
-    GENESIS_study = c("GEN-A4", "GEN-B5"),
-    study = c(spec$study$sea_ad, spec$study$sea_ad_multi),
+    GENESIS_study = c(studies$sea_ad$gen_name, studies$sea_ad_multi$gen_name),
+    study = c(studies$sea_ad$name, studies$sea_ad_multi$name),
     metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
   )
 )
@@ -270,11 +223,11 @@ manifest <- rbind(
 # are named between the two studies is different. Per Jaro, we will wait until
 # he compiles a list of overlapping samples to de-duplicate.
 
-if (!file.exists(pec_local_filenames$cmc)) {
-  warning(str_glue("PsychENCODE file {pec_local_filenames$cmc} doesn't exist! ",
+if (!file.exists(studies$cmc$local_files)) {
+  warning(str_glue("PsychENCODE file {studies$cmc$local_files} doesn't exist! ",
                    "This dataset will be excluded from harmonization."))
 } else {
-  meta <- read.csv(pec_local_filenames$cmc)
+  meta <- read.csv(studies$cmc$local_files)
 
   if (verbose) {
     colnames(meta)
@@ -283,25 +236,25 @@ if (!file.exists(pec_local_filenames$cmc)) {
                   isHispanic_col = "ethnicity", braak_nft_col = "Braak")
   }
 
-  meta_new <- harmonize(spec$study$cmc, meta, spec)
+  meta_new <- harmonize(studies$cmc$name, meta, spec)
 
   if (verbose) {
     print_summary(meta_new)
   }
 
-  cat("\nGEN-A5 /", spec$study$cmc, "\n")
+  cat("\n", studies$cmc$gen_name, "/", studies$cmc$name, "\n")
   validate_values(meta_new, spec)
 
-  datasets[[spec$study$cmc]] <- meta_new
+  datasets[[studies$cmc$name]] <- meta_new
 
-  new_filename <- write_metadata(meta_new, basename(pec_local_filenames$cmc))
+  new_filename <- write_metadata(meta_new, basename(studies$cmc$local_files))
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
   manifest <- rbind(
     manifest,
     data.frame(
-      GENESIS_study = "GEN-A5",
-      study = spec$study$cmc,
+      GENESIS_study = studies$cmc$gen_name,
+      study = studies$cmc$name,
       metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
     )
   )
@@ -314,11 +267,11 @@ if (!file.exists(pec_local_filenames$cmc)) {
 # are named between the two studies is different. Per Jaro, we will wait until
 # he compiles a list of overlapping samples to de-duplicate.
 
-if (!file.exists(pec_local_filenames$szbd)) {
-  warning(str_glue("PsychENCODE file {pec_local_filenames$szbd} doesn't exist! ",
+if (!file.exists(studies$szbd$local_files)) {
+  warning(str_glue("PsychENCODE file {studies$szbd$local_files} doesn't exist! ",
                    "This dataset will be excluded from harmonization."))
 } else {
-  meta <- read.csv(pec_local_filenames$szbd)
+  meta <- read.csv(studies$szbd$local_files)
 
   if (verbose) {
     colnames(meta)
@@ -327,25 +280,25 @@ if (!file.exists(pec_local_filenames$szbd)) {
                   isHispanic_col = "ethnicity", braak_nft_col = "Braak")
   }
 
-  meta_new <- harmonize(spec$study$szbd, meta, spec)
+  meta_new <- harmonize(studies$szbd$name, meta, spec)
 
   if (verbose) {
     print_summary(meta_new)
   }
 
-  cat("\nGEN-A6 /", spec$study$szbd, "\n")
+  cat("\n", studies$szbd$gen_name, "/", studies$szbd$name, "\n")
   validate_values(meta_new, spec)
 
-  datasets[[spec$study$szbd]] <- meta_new
+  datasets[[studies$szbd$name]] <- meta_new
 
-  new_filename <- write_metadata(meta_new, basename(pec_local_filenames$szbd))
+  new_filename <- write_metadata(meta_new, basename(studies$szbd$local_files))
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
   manifest <- rbind(
     manifest,
     data.frame(
-      GENESIS_study = "GEN-A6",
-      study = spec$study$szbd,
+      GENESIS_study = studies$szbd$gen_name,
+      study = studies$szbd$name,
       metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
     )
   )
@@ -355,7 +308,7 @@ if (!file.exists(pec_local_filenames$szbd)) {
 # GEN-A9 / SMIB-AD -------------------------------------------------------------
 # No overlap with other data sets.
 
-meta_file <- synapse_download(syn_ids[["GEN-A9"]])
+meta_file <- synapse_download(studies$smib_ad$syn_id)
 meta <- read.csv(meta_file$path)
 
 if (verbose) {
@@ -364,16 +317,16 @@ if (verbose) {
   print_summary(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 }
 
-meta_new <- harmonize(spec$study$smib_ad, meta, spec)
+meta_new <- harmonize(studies$smib_ad$name, meta, spec)
 
 if (verbose) {
   print_summary(meta_new)
 }
 
-cat("\nGEN-A9 /", spec$study$smib_ad, "\n")
+cat("\n", studies$smib_ad$gen_name, "/", studies$smib_ad$name, "\n")
 validate_values(meta_new, spec)
 
-datasets[[spec$study$smib_ad]] <- meta_new
+datasets[[studies$smib_ad$name]] <- meta_new
 
 new_filename <- write_metadata(meta_new, meta_file$name)
 new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
@@ -381,8 +334,8 @@ new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 manifest <- rbind(
   manifest,
   data.frame(
-    GENESIS_study = "GEN-A9",
-    study = spec$study$smib_ad,
+    GENESIS_study = studies$smib_ad$gen_name,
+    study = studies$smib_ad$name,
     metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
   )
 )
@@ -390,7 +343,7 @@ manifest <- rbind(
 
 # GEN-A10 / MCMPS --------------------------------------------------------------
 
-meta_file <- synapse_download(syn_ids[["GEN-A10"]])
+meta_file <- synapse_download(studies$mcmps$syn_id)
 meta <- read.csv(meta_file$path)
 
 if (verbose) {
@@ -399,16 +352,16 @@ if (verbose) {
   print_summary(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 }
 
-meta_new <- harmonize(spec$study$mcmps, meta, spec)
+meta_new <- harmonize(studies$mcmps$name, meta, spec)
 
 if (verbose) {
   print_summary(meta_new)
 }
 
-cat("\nGEN-A10 /", spec$study$mcmps, "\n")
+cat("\n", studies$mcmps$gen_name, "/", studies$mcmps$name, "\n")
 validate_values(meta_new, spec)
 
-datasets[[spec$study$mcmps]] <- meta_new
+datasets[[studies$mcmps$name]] <- meta_new
 
 new_filename <- write_metadata(meta_new, meta_file$name)
 new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
@@ -416,8 +369,8 @@ new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 manifest <- rbind(
   manifest,
   data.frame(
-    GENESIS_study = "GEN-A10",
-    study = spec$study$mcmps,
+    GENESIS_study = studies$mcmps$gen_name,
+    study = studies$mcmps$name,
     metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
   )
 )
@@ -425,7 +378,7 @@ manifest <- rbind(
 
 # GEN-A11 / MC_snRNA -----------------------------------------------------------
 
-meta_file <- synapse_download(syn_ids[["GEN-A11"]])
+meta_file <- synapse_download(studies$mc_snrna$syn_id)
 meta <- read.csv(meta_file$path)
 
 if (verbose) {
@@ -434,16 +387,16 @@ if (verbose) {
   print_summary(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 }
 
-meta_new <- harmonize(spec$study$mc_snrna, meta, spec)
+meta_new <- harmonize(studies$mc_snrna$name, meta, spec)
 
 if (verbose) {
   print_summary(meta_new)
 }
 
-cat("\nGEN-A11 /", spec$study$mc_snrna, "\n")
+cat("\n", studies$mc_snrna$gen_name, "/", studies$mc_snrna$name, "\n")
 validate_values(meta_new, spec)
 
-datasets[[spec$study$mc_snrna]] <- meta_new
+datasets[[studies$mc_snrna$name]] <- meta_new
 
 new_filename <- write_metadata(meta_new, meta_file$name)
 new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
@@ -451,8 +404,8 @@ new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 manifest <- rbind(
   manifest,
   data.frame(
-    GENESIS_study = "GEN-A11",
-    study = spec$study$mc_snrna,
+    GENESIS_study = studies$mc_snrna$gen_name,
+    study = studies$mc_snrna$name,
     metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
   )
 )
@@ -460,7 +413,7 @@ manifest <- rbind(
 
 # GEN-A12 / MC-BrAD ------------------------------------------------------------
 
-meta_file <- synapse_download(syn_ids[["GEN-A12"]])
+meta_file <- synapse_download(studies$mc_brad$syn_id)
 meta <- read.csv(meta_file$path)
 
 if (verbose) {
@@ -469,16 +422,16 @@ if (verbose) {
   print_summary(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 }
 
-meta_new <- harmonize(spec$study$mc_brad, meta, spec)
+meta_new <- harmonize(studies$mc_brad$name, meta, spec)
 
 if (verbose) {
   print_summary(meta_new)
 }
 
-cat("\nGEN-A12 /", spec$study$mc_brad, "\n")
+cat("\n", studies$mc_brad$gen_name, "/", studies$mc_brad$name, "\n")
 validate_values(meta_new, spec)
 
-datasets[[spec$study$mc_brad]] <- meta_new
+datasets[[studies$mc_brad$name]] <- meta_new
 
 new_filename <- write_metadata(meta_new, meta_file$name)
 new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
@@ -486,8 +439,8 @@ new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 manifest <- rbind(
   manifest,
   data.frame(
-    GENESIS_study = "GEN-A12",
-    study = spec$study$mc_brad,
+    GENESIS_study = studies$mc_brad$gen_name,
+    study = studies$mc_brad$name,
     metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
   )
 )
@@ -496,15 +449,15 @@ manifest <- rbind(
 # GEN-A15 / ASAP ---------------------------------------------------------------
 
 # ASAP metadata is split across two files
-if (!file.exists(asap_local_filenames$subject)) {
-  warning(str_glue("ASAP file {asap_local_filenames$subject} doesn't exist! ",
+if (!file.exists(studies$asap$local_files$subject)) {
+  warning(str_glue("ASAP file {studies$asap$local_files$subject} doesn't exist! ",
                    "This dataset will be excluded from harmonization."))
-} else if (!file.exists(asap_local_filenames$clinical)) {
-  warning(str_glue("ASAP file {asap_local_filenames$clinical} doesn't exist! ",
+} else if (!file.exists(studies$asap$local_files$clinical)) {
+  warning(str_glue("ASAP file {studies$asap$local_files$clinical} doesn't exist! ",
                    "This dataset will be excluded from harmonization."))
 } else {
-  subj <- read.csv(asap_local_filenames$subject)
-  clin <- read.csv(asap_local_filenames$clinical)
+  subj <- read.csv(studies$asap$local_files$subject)
+  clin <- read.csv(studies$asap$local_files$clinical)
 
   meta <- merge(subj, clin)
 
@@ -519,16 +472,16 @@ if (!file.exists(asap_local_filenames$subject)) {
     )
   }
 
-  meta_new <- harmonize(spec$study$asap, meta, spec)
+  meta_new <- harmonize(studies$asap$name, meta, spec)
 
   if (verbose) {
     print_summary(meta_new)
   }
 
-  cat("\nGEN-A15 /", spec$study$asap, "\n")
+  cat("\n", studies$asap$gen_name, "/", studies$asap$name, "\n")
   validate_values(meta_new, spec)
 
-  datasets[[spec$study$asap]] <- meta_new
+  datasets[[studies$asap$name]] <- meta_new
 
   new_filename <- write_metadata(meta_new, "ASAP_PMDBS_metadata.csv")
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
@@ -536,8 +489,8 @@ if (!file.exists(asap_local_filenames$subject)) {
   manifest <- rbind(
     manifest,
     data.frame(
-      GENESIS_study = "GEN-A15",
-      study = spec$study$asap,
+      GENESIS_study = studies$asap$gen_name,
+      study = studies$asap$name,
       metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
     )
   )
@@ -546,11 +499,11 @@ if (!file.exists(asap_local_filenames$subject)) {
 
 # GEN-A16 / McCarroll_SCZ ------------------------------------------------------
 
-if (!file.exists(mccarroll_scz_file)) {
-  warning(str_glue("McCarroll SCZ file {mccarroll_scz_file} doesn't exist! ",
+if (!file.exists(studies$mccarroll_scz$local_files)) {
+  warning(str_glue("McCarroll SCZ file {studies$mccarroll_scz$local_files} doesn't exist! ",
                    "This dataset will be excluded from harmonization."))
 } else {
-  meta <- read.delim(mccarroll_scz_file)
+  meta <- read.delim(studies$mccarroll_scz$local_files)
 
   if (verbose) {
     colnames(meta)
@@ -558,25 +511,25 @@ if (!file.exists(mccarroll_scz_file)) {
     print_summary(meta, ageDeath_col = "Age", sex_col = "Sex")
   }
 
-  meta_new <- harmonize(spec$study$mccarroll_scz, meta, spec)
+  meta_new <- harmonize(studies$mccarroll_scz$name, meta, spec)
 
   if (verbose) {
     print_summary(meta_new)
   }
 
-  cat("\nGEN-A16 /", spec$study$mccarroll_scz, "\n")
+  cat("\n", studies$mccarroll_scz$gen_name, "/", studies$mccarroll_scz$name, "\n")
   validate_values(meta_new, spec)
 
-  datasets[[spec$study$mccarroll_scz]] <- meta_new
+  datasets[[studies$mccarroll_scz$name]] <- meta_new
 
-  new_filename <- write_metadata(meta_new, basename(mccarroll_scz_file))
+  new_filename <- write_metadata(meta_new, basename(studies$mccarroll_scz$local_files))
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
   manifest <- rbind(
     manifest,
     data.frame(
-      GENESIS_study = "GEN-A16",
-      study = spec$study$mccarroll_scz,
+      GENESIS_study = studies$mccarroll_scz$gen_name,
+      study = studies$mccarroll_scz$name,
       metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
     )
   )
@@ -585,11 +538,11 @@ if (!file.exists(mccarroll_scz_file)) {
 
 # GEN-A17 / McCarroll_HD -------------------------------------------------------
 
-if (!file.exists(mccarroll_hd_file)) {
-  warning(str_glue("McCarroll HD file {mccarroll_hd_file} doesn't exist! ",
+if (!file.exists(studies$mccarroll_hd$local_files)) {
+  warning(str_glue("McCarroll HD file {studies$mccarroll_hd$local_files} doesn't exist! ",
                    "This dataset will be excluded from harmonization."))
 } else {
-  meta <- read.delim(mccarroll_hd_file)
+  meta <- read.delim(studies$mccarroll_hd$local_files)
 
   if (verbose) {
     colnames(meta)
@@ -597,25 +550,25 @@ if (!file.exists(mccarroll_hd_file)) {
     print_summary(meta, ageDeath_col = "Age", sex_col = "Sex")
   }
 
-  meta_new <- harmonize(spec$study$mccarroll_hd, meta, spec)
+  meta_new <- harmonize(studies$mccarroll_hd$name, meta, spec)
 
   if (verbose) {
     print_summary(meta_new)
   }
 
-  cat("\nGEN-A17 /", spec$study$mccarroll_hd, "\n")
+  cat("\n", studies$mccarroll_hd$gen_name, "/", studies$mccarroll_hd$name, "\n")
   validate_values(meta_new, spec)
 
-  datasets[[spec$study$mccarroll_hd]] <- meta_new
+  datasets[[studies$mccarroll_hd$name]] <- meta_new
 
-  new_filename <- write_metadata(meta_new, basename(mccarroll_hd_file))
+  new_filename <- write_metadata(meta_new, basename(studies$mccarroll_hd$local_files))
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
   manifest <- rbind(
     manifest,
     data.frame(
-      GENESIS_study = "GEN-A17",
-      study = spec$study$mccarroll_hd,
+      GENESIS_study = studies$mccarroll_hd$gen_name,
+      study = studies$mccarroll_hd$name,
       metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
     )
   )
@@ -625,7 +578,7 @@ if (!file.exists(mccarroll_hd_file)) {
 # GEN-B4 / AMP-AD_DiverseCohorts -----------------------------------------------
 # Uses Diverse Cohorts metadata from step 1.
 
-meta_file <- synapse_download(syn_ids[["GEN-B4"]])
+meta_file <- synapse_download(studies$diverse_cohorts$syn_id)
 meta <- read.csv(meta_file$path)
 
 if (verbose) {
@@ -633,16 +586,16 @@ if (verbose) {
   print_summary(meta, braak_nft_col = "Braak", bscore_nft_col = "bScore")
 }
 
-meta_new <- harmonize(spec$study$diverse_cohorts, meta, spec)
+meta_new <- harmonize(studies$diverse_cohorts$name, meta, spec)
 
 if (verbose) {
   print_summary(meta_new)
 }
 
-cat("\nGEN-B4 /", spec$study$diverse_cohorts, "\n")
+cat("\n", studies$diverse_cohorts$gen_name, "/", studies$diverse_cohorts$name, "\n")
 validate_values(meta_new, spec)
 
-datasets[[spec$study$diverse_cohorts]] <- meta_new
+datasets[[studies$diverse_cohorts$name]] <- meta_new
 
 new_filename <- write_metadata(meta_new, meta_file$name)
 new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
@@ -650,8 +603,8 @@ new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 manifest <- rbind(
   manifest,
   data.frame(
-    GENESIS_study = "GEN-B4",
-    study = spec$study$diverse_cohorts,
+    GENESIS_study = studies$diverse_cohorts$gen_name,
+    study = studies$diverse_cohorts$name,
     metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
   )
 )
@@ -660,36 +613,36 @@ manifest <- rbind(
 # GEN-B8 / BD2 -----------------------------------------------------------------
 
 # BD2 data, uses locally-downloaded file that is not on Synapse
-if (!file.exists(bd2_local_filename)) {
-  warning(str_glue("BD2 file {bd2_local_filename} doesn't exist! This dataset ",
+if (!file.exists(studies$bd2$local_files)) {
+  warning(str_glue("BD2 file {studies$bd2$local_files} doesn't exist! This dataset ",
                    "will be excluded from harmonization."))
 } else {
-  meta <- read.csv(bd2_local_filename)
+  meta <- read.csv(studies$bd2$local_files)
 
   if (verbose) {
     colnames(meta)
     print_summary(meta, ageDeath_col = "Age", race_col = "Race", sex_col = "Sex")
   }
 
-  meta_new <- harmonize(spec$study$bd2, meta, spec)
+  meta_new <- harmonize(studies$bd2$name, meta, spec)
 
   if (verbose) {
     print_summary(meta_new)
   }
 
-  cat("\nGEN-B8 /", spec$study$bd2, "\n")
+  cat("\n", studies$bd2$gen_name, "/", studies$bd2$name, "\n")
   validate_values(meta_new, spec)
 
-  datasets[[spec$study$bd2]] <- meta_new
+  datasets[[studies$bd2$name]] <- meta_new
 
-  new_filename <- write_metadata(meta_new, basename(bd2_local_filename))
+  new_filename <- write_metadata(meta_new, basename(studies$bd2$local_files))
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
   manifest <- rbind(
     manifest,
     data.frame(
-      GENESIS_study = "GEN-B8",
-      study = spec$study$bd2,
+      GENESIS_study = studies$bd2$gen_name,
+      study = studies$bd2$name,
       metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
     )
   )

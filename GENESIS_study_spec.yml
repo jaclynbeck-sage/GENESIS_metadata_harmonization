@@ -1,0 +1,106 @@
+default:
+
+  amp_pd:
+    name: "AMP-PD"
+    gen_name: "GEN-A3"
+    local_files:
+      main: "data/local_metadata/AMP-PD_donor_metadata.csv"
+      demographics: "data/local_metadata/releases_2023_v4release_1027_clinical_Demographics.csv"
+
+  asap:
+    name: "ASAP"
+    gen_name: "GEN-A15"
+    local_files:
+      clinical: "data/local_metadata/ASAP_clinpath-export-2026-04-28.csv"
+      subject: "data/local_metadata/ASAP_subject-export-2026-04-28.csv"
+
+  bd2:
+    name: "BD2"
+    gen_name: "GEN-B8"
+    local_files: "data/local_metadata/BD2_metadata.csv"
+
+  cmc:
+    name: "PEC_CMC"
+    gen_name: "GEN-A5"
+    local_files: "data/local_metadata/snRNAseq_clinical_metadata_A5_PEC_Roussos.csv"
+
+  # TODO
+  cuimc2:
+    name: "ROSMAP_CUIMC2"
+    gen_name: "GEN-B11"
+
+  diverse_cohorts:
+    name: "AMP-AD_DiverseCohorts"
+    gen_name: "GEN-B4"
+    syn_id: "syn73713769.3" # ADKP Harmonized file
+
+  mc_brad:
+    name: "MC-BrAD"
+    gen_name: "GEN-A12"
+    syn_id: "syn73713775.2" # ADKP Harmonized file
+
+  mc_snrna:
+    name: "MC_snRNA"
+    gen_name: "GEN-A11"
+    syn_id: "syn73713776.2" # ADKP Harmonized file
+
+  mccarroll_scz:
+    name: "McCarroll_SCZ"
+    gen_name: "GEN-A16"
+    local_files: "data/local_metadata/McCarroll_SZvillage_donorMetadata.txt"
+
+  mccarroll_hd:
+    name: "McCarroll_HD"
+    gen_name: "GEN-A17"
+    local_files: "data/local_metadata/McCarroll_HD_donor_metadata.txt"
+
+  mcmps:
+    name: "MCMPS"
+    gen_name: "GEN-A10"
+    syn_id: "syn73713777.2" # ADKP Harmonized file
+
+  # TODO
+  mit_rosmap:
+    name: "MIT_ROSMAP_Multiomics"
+    gen_name: "GEN-B6"
+
+  nps_ad:
+    name: "NPS-AD"
+    gen_name: "GEN-A1"
+    syn_id: "syn73713770.2" # ADKP Harmonized file
+
+  rosmap:
+    name: "ROSMAP"
+    gen_name: "GEN-A2"
+    syn_id: "syn73713768.1" # ADKP Harmonized file
+
+  sea_ad:
+    name: "SEA-AD"
+    gen_name: "GEN-A4"
+    syn_id: "syn73713778.1" # ADKP harmonized file
+
+  # TODO
+  sea_ad_multi:
+    name: "SEA-AD_multiome"
+    gen_name: "GEN-B5"
+
+  smib_ad:
+    name: "SMIB-AD"
+    gen_name: "GEN-A9"
+    syn_id: "syn73713779.1" # ADKP Harmonized file
+
+  # TODO
+  snRNA_BA10:
+    name: "snRNAseqPFC_BA10"
+    gen_name: "GEN-A13"
+
+  # TODO
+  snRNA_trem2:
+    name: "snRNAseqAD_TREM2"
+    gen_name: "GEN-A8"
+
+  szbd:
+    name: "PEC_SZBDMulti-Seq"
+    gen_name: "GEN-A6"
+    local_files: "data/local_metadata/snRNAseq_clinical_metadata_A6_PEC_RuzickaKellis.csv"
+
