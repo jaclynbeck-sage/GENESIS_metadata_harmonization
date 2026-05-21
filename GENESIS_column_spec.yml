@@ -17,8 +17,8 @@ default:
      "bScore_LB", "study"]
 
   diagnosis_columns:
-    ["AD", "BD", "DLBD", "Epilepsy", "HD", "MDD", "PD", "PSP", "SCZ",
-     "Tumor", "Vascular", "MCI", "Dementia", "Other", "Control"]
+    ["AD", "ALS", "BD", "DLBD", "Epilepsy", "FTD", "HD", "MDD", "PD", "PSP",
+     "SCZ", "Tumor", "Vascular", "MCI", "Dementia", "Other", "Control"]
 
 
   ## Demographics --------------------------------------------------------------
@@ -130,13 +130,17 @@ default:
 
   cohort:
     banner: "Banner Sun Health Research Institute"
+    barrow: "Barrow Neurological Institute"
     biggs: "Biggs Institute Brain Bank"
     cambridge: "Cambridge Brain Bank"
     clincor: "CLINCOR"
     columbia: "Columbia ADRC"
+    cumc: "Columbia University Medical Center"
+    edinburgh: "University of Edingurgh"
     efiga: "EFIGA"
     emory: "Emory"
     fbs: "FBS"
+    georgetown: "Georgetown University"
     hbcc: "HBCC"
     harvard: "HBTRC"
     latc: "LATC"
@@ -155,6 +159,7 @@ default:
     umiami: "UMBEB"
     upenn: "UPenn"
     upitt: "UPitt"
+    washu: "WashU"
     whicap: "WHICAP"
     none: ""
 
@@ -180,6 +185,7 @@ default:
     snRNA_BA10: "snRNAseqPFC_BA10"
     snRNA_trem2: "snRNAseqAD_TREM2"
     szbd: "PEC_SZBDMulti-Seq"
+    target_als: "TargetALS"
 
   ## Diagnosis column values ---------------------------------------------------
 

@@ -29,6 +29,7 @@ library(synapser)
 library(dplyr)
 library(purrr)
 library(stringr)
+library(readxl)
 
 spec <- config::get(file = "GENESIS_column_spec.yml")
 studies <- config::get(file = "GENESIS_study_spec.yml")
@@ -499,6 +500,40 @@ if (!file.exists(studies$mccarroll_hd$local_file)) {
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
   manifest <- rbind(manifest, to_manifest_df(studies$mccarroll_hd, new_syn_id))
+}
+
+
+# GEN-A18 / TargetALS ----------------------------------------------------------
+
+if (!file.exists(studies$target_als$local_file)) {
+  warning(str_glue("TargetALS file {studies$target_als$local_file} doesn't exist! ",
+                   "This dataset will be excluded from harmonization."))
+} else {
+  meta <- read_xlsx(studies$target_als$local_file)
+
+  if (verbose) {
+    colnames(meta)
+
+    print_summary(meta, pmi_col = "PMI (hrs)", sex_col = "Sex",
+                  isHispanic_col = "Ethnicity", race_col = "Race",
+                  ageDeath_col = "Age.At.Death")
+  }
+
+  meta_new <- harmonize(studies$target_als$name, meta, spec)
+
+  if (verbose) {
+    print_summary(meta_new)
+  }
+
+  cat("\n", studies$target_als$gen_name, "/", studies$target_als$name, "\n")
+  validate_values(meta_new, spec)
+
+  datasets[[studies$target_als$name]] <- meta_new
+
+  new_filename <- write_metadata(meta_new, "TargetALS_final_metadata.csv")
+  new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
+
+  manifest <- rbind(manifest, to_manifest_df(studies$target_als, new_syn_id))
 }
 
 

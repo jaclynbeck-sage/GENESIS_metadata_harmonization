@@ -57,6 +57,7 @@ harmonize <- function(study_name, metadata, spec) {
     "SEA-AD" = harmonize_SEA_AD(metadata, spec),
     "SMIB-AD" = harmonize_SMIB_AD(metadata, spec),
     "SZBDMulti-Seq" = harmonize_PEC_SZBD(metadata, spec),
+    "TargetALS" = harmonize_TargetALS(metadata, spec),
     .default = metadata
   )
 
@@ -417,7 +418,7 @@ determineADoutcome <- function(.data, spec) {
 make_binary_column <- function(column_values, true_value, spec) {
   case_match(column_values,
              true_value ~ 1,
-             c(spec$missing, NA) ~ NA,
+             c(spec$missing, NA, "Unknown") ~ NA,
              .default = 0)
 }
 
