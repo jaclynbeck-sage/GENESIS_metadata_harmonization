@@ -1,7 +1,6 @@
 # This script harmonizes and de-duplicates multiple studies used for GENESIS,
-# filling in missing information where there is sample overlap between a data
-# set and the Diverse Cohorts / AMP-AD 1.0 / NPS-AD data. Harmonized metadata is
-# uploaded to Synapse for use.
+# filling in missing information where there is sample overlap between data
+# sets. Harmonized metadata is uploaded to Synapse for use.
 #
 # The following data sets are harmonized in this script:
 #   GEN-A1 / NPS-AD
@@ -19,6 +18,7 @@
 #   GEN-A15 / ASAP
 #   GEN-A16 / McCarroll_SCZ
 #   GEN-A17 / McCarroll_HD
+#   GEN-A18 / TargetALS
 #   GEN-B4 / AMP-AD_DiverseCohorts
 #   GEN-B5 / SEA-AD_multiome
 #   GEN-B6 / MIT_ROSMAP_Multiomics
@@ -128,15 +128,15 @@ manifest <- do.call(rbind, list(
 # GEN-A3 / AMP-PD --------------------------------------------------------------
 
 # AMP-PD data, uses locally-downloaded files that are not on Synapse
-if (!file.exists(studies$amp_pd$local_files$main)) {
-  warning(str_glue("AMP-PD file {studies$amp_pd$local_files$main} doesn't ",
+if (!file.exists(studies$amp_pd$local_file$main)) {
+  warning(str_glue("AMP-PD file {studies$amp_pd$local_file$main} doesn't ",
                    "exist! This dataset will be excluded from harmonization."))
-} else if (!file.exists(studies$amp_pd$local_files$demographics)) {
-  warning(str_glue("AMP-PD file {studies$amp_pd$local_files$demographics} doesn't ",
+} else if (!file.exists(studies$amp_pd$local_file$demographics)) {
+  warning(str_glue("AMP-PD file {studies$amp_pd$local_file$demographics} doesn't ",
                    "exist! This dataset will be excluded from harmonization."))
 } else {
-  meta <- read.csv(studies$amp_pd$local_files$main)
-  demographics <- read.csv(studies$amp_pd$local_files$demographics) |>
+  meta <- read.csv(studies$amp_pd$local_file$main)
+  demographics <- read.csv(studies$amp_pd$local_file$demographics) |>
     select(participant_id, race, ethnicity)
 
   meta <- merge(meta, demographics)
@@ -168,7 +168,7 @@ if (!file.exists(studies$amp_pd$local_files$main)) {
 
   datasets[[studies$amp_pd$name]] <- meta_new
 
-  new_filename <- write_metadata(meta_new, basename(studies$amp_pd$local_files$main))
+  new_filename <- write_metadata(meta_new, basename(studies$amp_pd$local_file$main))
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
   manifest <- rbind(manifest, to_manifest_df(studies$amp_pd, new_syn_id))
@@ -213,11 +213,11 @@ manifest <- do.call(rbind, list(
 # are named between the two studies is different. Per Jaro, we will wait until
 # he compiles a list of overlapping samples to de-duplicate.
 
-if (!file.exists(studies$cmc$local_files)) {
-  warning(str_glue("PsychENCODE file {studies$cmc$local_files} doesn't exist! ",
+if (!file.exists(studies$cmc$local_file)) {
+  warning(str_glue("PsychENCODE file {studies$cmc$local_file} doesn't exist! ",
                    "This dataset will be excluded from harmonization."))
 } else {
-  meta <- read.csv(studies$cmc$local_files)
+  meta <- read.csv(studies$cmc$local_file)
 
   if (verbose) {
     colnames(meta)
@@ -237,7 +237,7 @@ if (!file.exists(studies$cmc$local_files)) {
 
   datasets[[studies$cmc$name]] <- meta_new
 
-  new_filename <- write_metadata(meta_new, basename(studies$cmc$local_files))
+  new_filename <- write_metadata(meta_new, basename(studies$cmc$local_file))
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
   manifest <- rbind(manifest, to_manifest_df(studies$cmc, new_syn_id))
@@ -250,11 +250,11 @@ if (!file.exists(studies$cmc$local_files)) {
 # are named between the two studies is different. Per Jaro, we will wait until
 # he compiles a list of overlapping samples to de-duplicate.
 
-if (!file.exists(studies$szbd$local_files)) {
-  warning(str_glue("PsychENCODE file {studies$szbd$local_files} doesn't exist! ",
+if (!file.exists(studies$szbd$local_file)) {
+  warning(str_glue("PsychENCODE file {studies$szbd$local_file} doesn't exist! ",
                    "This dataset will be excluded from harmonization."))
 } else {
-  meta <- read.csv(studies$szbd$local_files)
+  meta <- read.csv(studies$szbd$local_file)
 
   if (verbose) {
     colnames(meta)
@@ -274,7 +274,7 @@ if (!file.exists(studies$szbd$local_files)) {
 
   datasets[[studies$szbd$name]] <- meta_new
 
-  new_filename <- write_metadata(meta_new, basename(studies$szbd$local_files))
+  new_filename <- write_metadata(meta_new, basename(studies$szbd$local_file))
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
   manifest <- rbind(manifest, to_manifest_df(studies$szbd, new_syn_id))
@@ -397,15 +397,15 @@ manifest <- rbind(manifest, to_manifest_df(studies$mc_brad, new_syn_id))
 # GEN-A15 / ASAP ---------------------------------------------------------------
 
 # ASAP metadata is split across two files
-if (!file.exists(studies$asap$local_files$subject)) {
-  warning(str_glue("ASAP file {studies$asap$local_files$subject} doesn't exist! ",
+if (!file.exists(studies$asap$local_file$subject)) {
+  warning(str_glue("ASAP file {studies$asap$local_file$subject} doesn't exist! ",
                    "This dataset will be excluded from harmonization."))
-} else if (!file.exists(studies$asap$local_files$clinical)) {
-  warning(str_glue("ASAP file {studies$asap$local_files$clinical} doesn't exist! ",
+} else if (!file.exists(studies$asap$local_file$clinical)) {
+  warning(str_glue("ASAP file {studies$asap$local_file$clinical} doesn't exist! ",
                    "This dataset will be excluded from harmonization."))
 } else {
-  subj <- read.csv(studies$asap$local_files$subject)
-  clin <- read.csv(studies$asap$local_files$clinical)
+  subj <- read.csv(studies$asap$local_file$subject)
+  clin <- read.csv(studies$asap$local_file$clinical)
 
   meta <- merge(subj, clin)
 
@@ -440,11 +440,11 @@ if (!file.exists(studies$asap$local_files$subject)) {
 
 # GEN-A16 / McCarroll_SCZ ------------------------------------------------------
 
-if (!file.exists(studies$mccarroll_scz$local_files)) {
-  warning(str_glue("McCarroll SCZ file {studies$mccarroll_scz$local_files} doesn't exist! ",
+if (!file.exists(studies$mccarroll_scz$local_file)) {
+  warning(str_glue("McCarroll SCZ file {studies$mccarroll_scz$local_file} doesn't exist! ",
                    "This dataset will be excluded from harmonization."))
 } else {
-  meta <- read.delim(studies$mccarroll_scz$local_files)
+  meta <- read.delim(studies$mccarroll_scz$local_file)
 
   if (verbose) {
     colnames(meta)
@@ -463,7 +463,7 @@ if (!file.exists(studies$mccarroll_scz$local_files)) {
 
   datasets[[studies$mccarroll_scz$name]] <- meta_new
 
-  new_filename <- write_metadata(meta_new, basename(studies$mccarroll_scz$local_files))
+  new_filename <- write_metadata(meta_new, basename(studies$mccarroll_scz$local_file))
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
   manifest <- rbind(manifest, to_manifest_df(studies$mccarroll_scz, new_syn_id))
@@ -472,11 +472,11 @@ if (!file.exists(studies$mccarroll_scz$local_files)) {
 
 # GEN-A17 / McCarroll_HD -------------------------------------------------------
 
-if (!file.exists(studies$mccarroll_hd$local_files)) {
-  warning(str_glue("McCarroll HD file {studies$mccarroll_hd$local_files} doesn't exist! ",
+if (!file.exists(studies$mccarroll_hd$local_file)) {
+  warning(str_glue("McCarroll HD file {studies$mccarroll_hd$local_file} doesn't exist! ",
                    "This dataset will be excluded from harmonization."))
 } else {
-  meta <- read.delim(studies$mccarroll_hd$local_files)
+  meta <- read.delim(studies$mccarroll_hd$local_file)
 
   if (verbose) {
     colnames(meta)
@@ -495,7 +495,7 @@ if (!file.exists(studies$mccarroll_hd$local_files)) {
 
   datasets[[studies$mccarroll_hd$name]] <- meta_new
 
-  new_filename <- write_metadata(meta_new, basename(studies$mccarroll_hd$local_files))
+  new_filename <- write_metadata(meta_new, basename(studies$mccarroll_hd$local_file))
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
   manifest <- rbind(manifest, to_manifest_df(studies$mccarroll_hd, new_syn_id))
@@ -533,11 +533,11 @@ manifest <- rbind(manifest, to_manifest_df(studies$diverse_cohorts, new_syn_id))
 # GEN-B8 / BD2 -----------------------------------------------------------------
 
 # BD2 data, uses locally-downloaded file that is not on Synapse
-if (!file.exists(studies$bd2$local_files)) {
-  warning(str_glue("BD2 file {studies$bd2$local_files} doesn't exist! This dataset ",
+if (!file.exists(studies$bd2$local_file)) {
+  warning(str_glue("BD2 file {studies$bd2$local_file} doesn't exist! This dataset ",
                    "will be excluded from harmonization."))
 } else {
-  meta <- read.csv(studies$bd2$local_files)
+  meta <- read.csv(studies$bd2$local_file)
 
   if (verbose) {
     colnames(meta)
@@ -555,7 +555,7 @@ if (!file.exists(studies$bd2$local_files)) {
 
   datasets[[studies$bd2$name]] <- meta_new
 
-  new_filename <- write_metadata(meta_new, basename(studies$bd2$local_files))
+  new_filename <- write_metadata(meta_new, basename(studies$bd2$local_file))
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
   manifest <- rbind(manifest, to_manifest_df(studies$bd2, new_syn_id))
