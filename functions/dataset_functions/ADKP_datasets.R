@@ -217,8 +217,7 @@ harmonize_ROSMAP <- function(metadata, spec) {
                             c(4, 5, 6) ~ 1, # 4, 5, and 6 = Dementia
                             c(1, 2, 3) ~ 0,
                             .default = NA)
-    ) |>
-    select(-tmp_sum)
+    )
 }
 
 

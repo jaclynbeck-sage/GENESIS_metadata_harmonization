@@ -31,8 +31,8 @@ write_metadata <- function(metadata, filename) {
       commas <- grepl(",", metadata[, column]) & !grepl("\"", metadata[, column])
       metadata[commas, column] <- paste0("\"", metadata[commas, column], "\"")
 
-      # Remove any "\n" characters
-      metadata[, column] <- str_replace_all(metadata[, column], "\n", "")
+      # Remove any "\r\n" and "\n" characters
+      metadata[, column] <- str_replace_all(metadata[, column], "\r?\n", ". ")
     }
   }
 

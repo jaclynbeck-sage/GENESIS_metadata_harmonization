@@ -10,6 +10,7 @@
 #     * `Race` => `race`
 #     * `Age.At.Death` => `ageDeath`
 #     * `Site.Specimen.Collected` => `cohort`
+#   * Trim whitespace from individualIDs
 #   * Create an `isHispanic` colum based on `Ethnicity`. We keep the Ethnicity
 #     column because it has additional information in it beyond Hispanic/Latino
 #     status.
@@ -30,6 +31,8 @@
 #     the `Comorbidities` column
 #   * Add to the `DLBD` and `Vascular` columns with data from the
 #     `Comorbidities` column
+#   * Strip quote characters from the `Comorbidities` column so the file writes
+#     correctly
 harmonize_TargetALS <- function(metadata, spec) {
   metadata |>
     dplyr::rename(
@@ -41,6 +44,7 @@ harmonize_TargetALS <- function(metadata, spec) {
       cohort = Site.Specimen.Collected
     ) |>
     dplyr::mutate(
+      individualID = str_trim(individualID),
       ageDeath = censor_ages(ageDeath, spec),
       PMI = as.numeric(PMI),
       isHispanic = case_match(
@@ -96,7 +100,10 @@ harmonize_TargetALS <- function(metadata, spec) {
       MDD = grep_to_binary_column(Comorbidities, "Depression"),
       Epilepsy = grep_to_binary_column(Comorbidities, "Epilepsy"),
       Other = grep_to_binary_column(Comorbidities,
-                                    "stroke|encephalopathy|meningitis|Multiple sclerosis")
+                                    "stroke|encephalopathy|meningitis|Multiple sclerosis"),
+
+      # Strip quotes from Comorbidities column
+      Comorbidities = str_replace_all(Comorbidities, "\"", "")
     ) |>
     as.data.frame()
 }

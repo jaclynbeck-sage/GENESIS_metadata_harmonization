@@ -22,7 +22,7 @@ for (file in dataset_functions) {
 # with AMP-AD 1.0 / Diverse Cohorts data.
 #
 # Arguments:
-#   study_name - the name of the study
+#   study_obj - the config object for this study
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
 #     are variables and rows are individuals.
 #   spec - a `config` object describing the standardized values for each field,
@@ -38,28 +38,11 @@ for (file in dataset_functions) {
 #   a `data.frame` with all relevant fields harmonized to the GENESIS data
 #   dictionary. Columns not defined in the data dictionary are left as-is.
 #
-harmonize <- function(study_name, metadata, spec) {
-  # Study-specific harmonization
-  metadata <- switch(
-    study_name,
-    "AMP-AD_DiverseCohorts" = harmonize_Diverse_Cohorts(metadata, spec),
-    "AMP-PD" = harmonize_AMP_PD(metadata, spec),
-    "ASAP" = harmonize_ASAP(metadata, spec),
-    "BD2" = harmonize_BD2(metadata, spec),
-    "CMC" = harmonize_PEC_CMC(metadata, spec),
-    "MC-BrAD" = harmonize_MC_BrAD(metadata, spec),
-    "MC_snRNA" = harmonize_MC_snRNA(metadata, spec),
-    "McCarroll_HD" = harmonize_McCarroll_HD(metadata, spec),
-    "McCarroll_SCZ" = harmonize_McCarroll_SCZ(metadata, spec),
-    "MCMPS" = harmonize_MCMPS(metadata, spec),
-    "NPS-AD" = harmonize_NPS_AD(metadata, spec),
-    "ROSMAP" = harmonize_ROSMAP(metadata, spec),
-    "SEA-AD" = harmonize_SEA_AD(metadata, spec),
-    "SMIB-AD" = harmonize_SMIB_AD(metadata, spec),
-    "SZBDMulti-Seq" = harmonize_PEC_SZBD(metadata, spec),
-    "TargetALS" = harmonize_TargetALS(metadata, spec),
-    .default = metadata
-  )
+harmonize <- function(study_obj, metadata, spec) {
+  # Find the study-specific harmonization function to call.
+  harmonize_fn <- match.fun(study_obj$harmonize_fn)
+
+  metadata <- harmonize_fn(metadata, spec)
 
   # Add any missing non-diagnosis fields
   missing_fields <- setdiff(spec$demographic_columns, colnames(metadata))
@@ -92,7 +75,7 @@ harmonize <- function(study_name, metadata, spec) {
       bScore_NFT = get_bScore(Braak_NFT, spec),
       bScore_LB = get_bScore(Braak_LB, spec),
       # Add study name
-      study = study_name
+      study = study_obj$name
     )
 
   # Put harmonized fields first in the data frame
