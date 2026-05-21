@@ -30,7 +30,7 @@ library(dplyr)
 library(purrr)
 library(stringr)
 
-spec <- config::get(file = "GENESIS_harmonization.yml")
+spec <- config::get(file = "GENESIS_column_spec.yml")
 studies <- config::get(file = "GENESIS_study_spec.yml")
 
 # Source all the helper function scripts
