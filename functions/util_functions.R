@@ -167,3 +167,27 @@ check_new_versions <- function(syn_id_list) {
     }
   }
 }
+
+
+# Reformat a config object for the manifest data frame -------------------------
+
+# This function takes a study object from the GENESIS_study_spec.yml config file
+# and turns it into a single-row data frame that can be concatenated to the
+# manifest.
+#
+# Arguments:
+#   study - a study object from the config file, which should have a `name` and
+#       `gene_name` field
+#   syn_obj - the object returned by synStore after storing the harmonized
+#       metadata file
+#
+# Returns:
+#   a single-row data frame with columns `GENESIS_study`, `study`, and
+#   `metadata_synid`
+to_manifest_df <- function(study, syn_obj) {
+  data.frame(
+    GENESIS_study = study$gen_name,
+    study = study$name,
+    metadata_synid = paste0(syn_obj$id, ".", syn_obj$versionNumber)
+  )
+}

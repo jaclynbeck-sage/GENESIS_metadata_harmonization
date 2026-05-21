@@ -77,14 +77,7 @@ datasets[[studies$nps_ad$name]] <- meta_new
 new_filename <- write_metadata(meta_new, meta_file$name)
 new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
-manifest <- rbind(
-  manifest,
-  data.frame(
-    GENESIS_study = studies$nps_ad$gen_name,
-    study = studies$nps_ad$name,
-    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
-  )
-)
+manifest <- rbind(manifest, to_manifest_df(studies$nps_ad, new_syn_id))
 
 
 # GEN-A2, GEN-A8, GEN-A13, GEN-B6, GEN-B11 / ROSMAP ----------------------------
@@ -122,7 +115,14 @@ ros_studies <- lapply(
   dplyr::rename(study = name, GENESIS_study = gen_name) |>
   mutate(metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber))
 
-manifest <- rbind(manifest, ros_studies)
+manifest <- do.call(rbind, list(
+  manifest,
+  to_manifest_df(studies$rosmap, new_syn_id),
+  to_manifest_df(studies$snRNA_trem2, new_syn_id),
+  to_manifest_df(studies$snRNA_BA10, new_syn_id),
+  to_manifest_df(studies$mit_rosmap, new_syn_id),
+  to_manifest_df(studies$cuimc2, new_syn_id)
+))
 
 
 # GEN-A3 / AMP-PD --------------------------------------------------------------
@@ -171,14 +171,7 @@ if (!file.exists(studies$amp_pd$local_files$main)) {
   new_filename <- write_metadata(meta_new, basename(studies$amp_pd$local_files$main))
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
-  manifest <- rbind(
-    manifest,
-    data.frame(
-      GENESIS_study = studies$amp_pd$gen_name,
-      study = studies$amp_pd$name,
-      metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
-    )
-  )
+  manifest <- rbind(manifest, to_manifest_df(studies$amp_pd, new_syn_id))
 }
 
 
@@ -207,14 +200,11 @@ datasets[[studies$sea_ad$name]] <- meta_new
 new_filename <- write_metadata(meta_new, meta_file$name)
 new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
-manifest <- rbind(
+manifest <- do.call(rbind, list(
   manifest,
-  data.frame(
-    GENESIS_study = c(studies$sea_ad$gen_name, studies$sea_ad_multi$gen_name),
-    study = c(studies$sea_ad$name, studies$sea_ad_multi$name),
-    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
-  )
-)
+  to_manifest_df(studies$sea_ad, new_syn_id),
+  to_manifest_df(studies$sea_ad_multi, new_syn_id)
+))
 
 
 # GEN-A5 / CMC (PsychENCODE) ---------------------------------------------------
@@ -250,14 +240,7 @@ if (!file.exists(studies$cmc$local_files)) {
   new_filename <- write_metadata(meta_new, basename(studies$cmc$local_files))
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
-  manifest <- rbind(
-    manifest,
-    data.frame(
-      GENESIS_study = studies$cmc$gen_name,
-      study = studies$cmc$name,
-      metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
-    )
-  )
+  manifest <- rbind(manifest, to_manifest_df(studies$cmc, new_syn_id))
 }
 
 
@@ -294,14 +277,7 @@ if (!file.exists(studies$szbd$local_files)) {
   new_filename <- write_metadata(meta_new, basename(studies$szbd$local_files))
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
-  manifest <- rbind(
-    manifest,
-    data.frame(
-      GENESIS_study = studies$szbd$gen_name,
-      study = studies$szbd$name,
-      metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
-    )
-  )
+  manifest <- rbind(manifest, to_manifest_df(studies$szbd, new_syn_id))
 }
 
 
@@ -331,14 +307,7 @@ datasets[[studies$smib_ad$name]] <- meta_new
 new_filename <- write_metadata(meta_new, meta_file$name)
 new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
-manifest <- rbind(
-  manifest,
-  data.frame(
-    GENESIS_study = studies$smib_ad$gen_name,
-    study = studies$smib_ad$name,
-    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
-  )
-)
+manifest <- rbind(manifest, to_manifest_df(studies$smib_ad, new_syn_id))
 
 
 # GEN-A10 / MCMPS --------------------------------------------------------------
@@ -366,14 +335,7 @@ datasets[[studies$mcmps$name]] <- meta_new
 new_filename <- write_metadata(meta_new, meta_file$name)
 new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
-manifest <- rbind(
-  manifest,
-  data.frame(
-    GENESIS_study = studies$mcmps$gen_name,
-    study = studies$mcmps$name,
-    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
-  )
-)
+manifest <- rbind(manifest, to_manifest_df(studies$mcmps, new_syn_id))
 
 
 # GEN-A11 / MC_snRNA -----------------------------------------------------------
@@ -401,14 +363,7 @@ datasets[[studies$mc_snrna$name]] <- meta_new
 new_filename <- write_metadata(meta_new, meta_file$name)
 new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
-manifest <- rbind(
-  manifest,
-  data.frame(
-    GENESIS_study = studies$mc_snrna$gen_name,
-    study = studies$mc_snrna$name,
-    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
-  )
-)
+manifest <- rbind(manifest, to_manifest_df(studies$mc_snrna, new_syn_id))
 
 
 # GEN-A12 / MC-BrAD ------------------------------------------------------------
@@ -436,14 +391,7 @@ datasets[[studies$mc_brad$name]] <- meta_new
 new_filename <- write_metadata(meta_new, meta_file$name)
 new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
-manifest <- rbind(
-  manifest,
-  data.frame(
-    GENESIS_study = studies$mc_brad$gen_name,
-    study = studies$mc_brad$name,
-    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
-  )
-)
+manifest <- rbind(manifest, to_manifest_df(studies$mc_brad, new_syn_id))
 
 
 # GEN-A15 / ASAP ---------------------------------------------------------------
@@ -486,14 +434,7 @@ if (!file.exists(studies$asap$local_files$subject)) {
   new_filename <- write_metadata(meta_new, "ASAP_PMDBS_metadata.csv")
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
-  manifest <- rbind(
-    manifest,
-    data.frame(
-      GENESIS_study = studies$asap$gen_name,
-      study = studies$asap$name,
-      metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
-    )
-  )
+  manifest <- rbind(manifest, to_manifest_df(studies$asap, new_syn_id))
 }
 
 
@@ -525,14 +466,7 @@ if (!file.exists(studies$mccarroll_scz$local_files)) {
   new_filename <- write_metadata(meta_new, basename(studies$mccarroll_scz$local_files))
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
-  manifest <- rbind(
-    manifest,
-    data.frame(
-      GENESIS_study = studies$mccarroll_scz$gen_name,
-      study = studies$mccarroll_scz$name,
-      metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
-    )
-  )
+  manifest <- rbind(manifest, to_manifest_df(studies$mccarroll_scz, new_syn_id))
 }
 
 
@@ -564,14 +498,7 @@ if (!file.exists(studies$mccarroll_hd$local_files)) {
   new_filename <- write_metadata(meta_new, basename(studies$mccarroll_hd$local_files))
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
-  manifest <- rbind(
-    manifest,
-    data.frame(
-      GENESIS_study = studies$mccarroll_hd$gen_name,
-      study = studies$mccarroll_hd$name,
-      metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
-    )
-  )
+  manifest <- rbind(manifest, to_manifest_df(studies$mccarroll_hd, new_syn_id))
 }
 
 
@@ -600,14 +527,7 @@ datasets[[studies$diverse_cohorts$name]] <- meta_new
 new_filename <- write_metadata(meta_new, meta_file$name)
 new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
-manifest <- rbind(
-  manifest,
-  data.frame(
-    GENESIS_study = studies$diverse_cohorts$gen_name,
-    study = studies$diverse_cohorts$name,
-    metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
-  )
-)
+manifest <- rbind(manifest, to_manifest_df(studies$diverse_cohorts, new_syn_id))
 
 
 # GEN-B8 / BD2 -----------------------------------------------------------------
@@ -638,14 +558,7 @@ if (!file.exists(studies$bd2$local_files)) {
   new_filename <- write_metadata(meta_new, basename(studies$bd2$local_files))
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
-  manifest <- rbind(
-    manifest,
-    data.frame(
-      GENESIS_study = studies$bd2$gen_name,
-      study = studies$bd2$name,
-      metadata_synid = paste0(new_syn_id$id, ".", new_syn_id$versionNumber)
-    )
-  )
+  manifest <- rbind(manifest, to_manifest_df(studies$bd2, new_syn_id))
 }
 
 
