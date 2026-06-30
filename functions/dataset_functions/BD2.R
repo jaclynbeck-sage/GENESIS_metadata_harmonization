@@ -4,9 +4,9 @@
 # dictionary. There are 14 samples that overlap with Diverse Cohorts/AMP-AD 1.0,
 # so missing Braak/amyCerad/amyThal values for those samples are filled in from
 # that data in the main harmonization function. Source metadata file: local
-# download provided by Jaroslav Bendl on July 16, 2025.
+# download provided by Jaroslav Bendl on June 29, 2026.
 #
-# Modifications needed for version July 16, 2025:
+# Modifications needed for version June 29, 2026:
 #   * Rename columns:
 #     * `SubNum` => `individualID`
 #     * `Brain_bank` => `dataContributionGroup`
@@ -21,6 +21,8 @@
 #   * Change `dataContributionGroup` "UPitt" to "University of Pittsburgh"
 #   * Harmonize the `Dx` column into a binary `BD` column
 #   * Harmonize the `ClinConPrimDxText` into a binary `SCZ` column
+#   * Create binary `MDD` column based on `ClinConPrimDxText` and `ClinConSecDxText`
+#   * Create binary `Other` column based on `ClinConPrimDxText`
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -44,13 +46,17 @@ harmonize_BD2 <- function(metadata, spec) {
     dplyr::mutate(
       # Shouldn't need censoring but just in case
       ageDeath = censor_ages(ageDeath, spec),
-      isHispanic = ifelse(race == "Hispanic",
-                          spec$isHispanic$true_val,
-                          spec$isHispanic$false_val),
+      isHispanic = case_match(
+        race,
+        "Hispanic" ~ spec$isHispanic$true_val,
+        NA ~ spec$missing,
+        .default = spec$isHispanic$false_val
+      ),
       race = case_match(
         race,
         "Black" ~ spec$race$Black,
         "Hispanic" ~ spec$race$other,
+        "Asiansian" ~ spec$race$Asian, # Fix typo in source data
         .default = race
       ),
       sex = tolower(sex),
@@ -78,7 +84,8 @@ harmonize_BD2 <- function(metadata, spec) {
       # together and pattern match
       MDD = grep_to_binary_column(paste(ClinConPrimDxText, ClinConSecDxText),
                                   "Major depressive disorder"),
-      Other = grep_to_binary_column(ClinConPrimDxText, "Schizoaffective")
+      Other = grep_to_binary_column(ClinConPrimDxText,
+                                    "Schizoaffective|Encephalopathy|sclerosis")
       # TODO this study has a "BD_type" column
     )
 }
