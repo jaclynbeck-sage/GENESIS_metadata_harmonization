@@ -21,7 +21,7 @@
 #   * Change `sex` values to all lower case
 #   * Add a `cohort` column based on dataContributionGroup values
 #   * Change `dataContributionGroup` values to conform to data dictionary
-#   * Harmonize the `Info.Diagnosis` field into binary `PD` and `Control` fields
+#   * Create binary `PD` diagnosis field from the `Info.Diagnosis` column
 #
 # Note on diagnosis:
 #   There are several possible diagnosis fields: Info.Diagnosis,

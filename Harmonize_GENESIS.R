@@ -71,12 +71,11 @@ if (verbose) {
 cat("\n", nps_ad$gen_name, "/", nps_ad$name, "\n")
 validate_values(meta_new, spec)
 
-datasets[[nps_ad$name]] <- meta_new
-
-new_filename <- write_metadata(meta_new, meta_file$name)
-new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
-
-manifest <- rbind(manifest, to_manifest_df(nps_ad, new_syn_id))
+datasets[[nps_ad$name]] <- list(
+  data = meta_new,
+  study = nps_ad,
+  filename = meta_file$name
+)
 
 
 # GEN-A2, GEN-A8, GEN-A13, GEN-B6, GEN-B11 / ROSMAP ----------------------------
@@ -100,19 +99,13 @@ if (verbose) {
 cat("\n", rosmap$gen_name, "/", rosmap$name, "\n")
 validate_values(meta_new, spec)
 
-datasets[[rosmap$name]] <- meta_new
-
-new_filename <- write_metadata(meta_new, meta_file$name)
-new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
-
-manifest <- do.call(rbind, list(
-  manifest,
-  to_manifest_df(rosmap, new_syn_id),
-  to_manifest_df(studies$snRNA_trem2, new_syn_id),
-  to_manifest_df(studies$snRNA_BA10, new_syn_id),
-  to_manifest_df(studies$mit_rosmap, new_syn_id),
-  to_manifest_df(studies$cuimc2, new_syn_id)
-))
+datasets[[rosmap$name]] <- list(
+  data = meta_new,
+  study = rosmap,
+  assoc_studies = list(studies$snRNA_trem2, studies$snRNA_BA10,
+                       studies$mit_rosmap, studies$cuimc2),
+  filename = meta_file$name
+)
 
 
 # GEN-A3 / AMP-PD --------------------------------------------------------------
@@ -158,12 +151,11 @@ if (!file.exists(amp_pd$local_file$main)) {
   cat("\n", amp_pd$gen_name, "/", amp_pd$name, "\n")
   validate_values(meta_new, spec)
 
-  datasets[[amp_pd$name]] <- meta_new
-
-  new_filename <- write_metadata(meta_new, basename(amp_pd$local_file$main))
-  new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
-
-  manifest <- rbind(manifest, to_manifest_df(amp_pd, new_syn_id))
+  datasets[[amp_pd$name]] <- list(
+    data = meta_new,
+    study = amp_pd,
+    filename = basename(amp_pd$local_file$main)
+  )
 }
 
 
@@ -188,16 +180,12 @@ if (verbose) {
 cat("\n", sea_ad$gen_name, "/", sea_ad$name, "\n")
 validate_values(meta_new, spec)
 
-datasets[[sea_ad$name]] <- meta_new
-
-new_filename <- write_metadata(meta_new, meta_file$name)
-new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
-
-manifest <- do.call(rbind, list(
-  manifest,
-  to_manifest_df(sea_ad, new_syn_id),
-  to_manifest_df(studies$sea_ad_multi, new_syn_id)
-))
+datasets[[sea_ad$name]] <- list(
+  data = meta_new,
+  study = sea_ad,
+  assoc_studies = list(studies$sea_ad_multi),
+  filename = meta_file$name
+)
 
 
 # GEN-A5 / CMC (PsychENCODE) ---------------------------------------------------
@@ -229,12 +217,11 @@ if (!file.exists(cmc$local_file)) {
   cat("\n", cmc$gen_name, "/", cmc$name, "\n")
   validate_values(meta_new, spec)
 
-  datasets[[cmc$name]] <- meta_new
-
-  new_filename <- write_metadata(meta_new, basename(cmc$local_file))
-  new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
-
-  manifest <- rbind(manifest, to_manifest_df(cmc, new_syn_id))
+  datasets[[cmc$name]] <- list(
+    data = meta_new,
+    study = cmc,
+    filename = basename(cmc$local_file)
+  )
 }
 
 
@@ -267,12 +254,11 @@ if (!file.exists(szbd$local_file)) {
   cat("\n", szbd$gen_name, "/", szbd$name, "\n")
   validate_values(meta_new, spec)
 
-  datasets[[szbd$name]] <- meta_new
-
-  new_filename <- write_metadata(meta_new, basename(szbd$local_file))
-  new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
-
-  manifest <- rbind(manifest, to_manifest_df(szbd, new_syn_id))
+  datasets[[szbd$name]] <- list(
+    data = meta_new,
+    study = szbd,
+    filename = basename(szbd$local_file)
+  )
 }
 
 
@@ -298,12 +284,11 @@ if (verbose) {
 cat("\n", smib_ad$gen_name, "/", smib_ad$name, "\n")
 validate_values(meta_new, spec)
 
-datasets[[smib_ad$name]] <- meta_new
-
-new_filename <- write_metadata(meta_new, meta_file$name)
-new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
-
-manifest <- rbind(manifest, to_manifest_df(smib_ad, new_syn_id))
+datasets[[smib_ad$name]] <- list(
+  data = meta_new,
+  study = smib_ad,
+  filename = meta_file$name
+)
 
 
 # GEN-A10 / MCMPS --------------------------------------------------------------
@@ -327,12 +312,11 @@ if (verbose) {
 cat("\n", mcmps$gen_name, "/", mcmps$name, "\n")
 validate_values(meta_new, spec)
 
-datasets[[mcmps$name]] <- meta_new
-
-new_filename <- write_metadata(meta_new, meta_file$name)
-new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
-
-manifest <- rbind(manifest, to_manifest_df(mcmps, new_syn_id))
+datasets[[mcmps$name]] <- list(
+  data = meta_new,
+  study = mcmps,
+  filename = meta_file$name
+)
 
 
 # GEN-A11 / MC_snRNA -----------------------------------------------------------
@@ -356,12 +340,11 @@ if (verbose) {
 cat("\n", mc_snrna$gen_name, "/", mc_snrna$name, "\n")
 validate_values(meta_new, spec)
 
-datasets[[mc_snrna$name]] <- meta_new
-
-new_filename <- write_metadata(meta_new, meta_file$name)
-new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
-
-manifest <- rbind(manifest, to_manifest_df(mc_snrna, new_syn_id))
+datasets[[mc_snrna$name]] <- list(
+  data = meta_new,
+  study = mc_snrna,
+  filename = meta_file$name
+)
 
 
 # GEN-A12 / MC-BrAD ------------------------------------------------------------
@@ -385,12 +368,11 @@ if (verbose) {
 cat("\n", mc_brad$gen_name, "/", mc_brad$name, "\n")
 validate_values(meta_new, spec)
 
-datasets[[mc_brad$name]] <- meta_new
-
-new_filename <- write_metadata(meta_new, meta_file$name)
-new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
-
-manifest <- rbind(manifest, to_manifest_df(mc_brad, new_syn_id))
+datasets[[mc_brad$name]] <- list(
+  data = meta_new,
+  study = mc_brad,
+  filename = meta_file$name
+)
 
 
 # GEN-A15 / ASAP ---------------------------------------------------------------
@@ -430,18 +412,18 @@ if (!file.exists(asap$local_file$subject)) {
   cat("\n", asap$gen_name, "/", asap$name, "\n")
   validate_values(meta_new, spec)
 
-  datasets[[asap$name]] <- meta_new
-
-  new_filename <- write_metadata(meta_new, "ASAP_PMDBS_metadata.csv")
-  new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
-
-  manifest <- rbind(manifest, to_manifest_df(asap, new_syn_id))
+  datasets[[asap$name]] <- list(
+    data = meta_new,
+    study = asap,
+    filename = "ASAP_PMDBS_metadata.csv"
+  )
 }
 
 
 # GEN-A16 / McCarroll_SCZ ------------------------------------------------------
 
 mccarroll_scz <- studies$mccarroll_scz
+
 if (!file.exists(mccarroll_scz$local_file)) {
   warning(str_glue("{mccarroll_scz$name} file {mccarroll_scz$local_file} doesn't exist! ",
                    "This dataset will be excluded from harmonization."))
@@ -463,18 +445,18 @@ if (!file.exists(mccarroll_scz$local_file)) {
   cat("\n", mccarroll_scz$gen_name, "/", mccarroll_scz$name, "\n")
   validate_values(meta_new, spec)
 
-  datasets[[mccarroll_scz$name]] <- meta_new
-
-  new_filename <- write_metadata(meta_new, basename(mccarroll_scz$local_file))
-  new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
-
-  manifest <- rbind(manifest, to_manifest_df(mccarroll_scz, new_syn_id))
+  datasets[[mccarroll_scz$name]] <- list(
+    data = meta_new,
+    study = mccarroll_scz,
+    filename = basename(mccarroll_scz$local_file)
+  )
 }
 
 
 # GEN-A17 / McCarroll_HD -------------------------------------------------------
 
 mccarroll_hd <- studies$mccarroll_hd
+
 if (!file.exists(mccarroll_hd$local_file)) {
   warning(str_glue("{mccarroll_hd$name} file {mccarroll_hd$local_file} doesn't exist! ",
                    "This dataset will be excluded from harmonization."))
@@ -496,18 +478,18 @@ if (!file.exists(mccarroll_hd$local_file)) {
   cat("\n", mccarroll_hd$gen_name, "/", mccarroll_hd$name, "\n")
   validate_values(meta_new, spec)
 
-  datasets[[mccarroll_hd$name]] <- meta_new
-
-  new_filename <- write_metadata(meta_new, basename(mccarroll_hd$local_file))
-  new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
-
-  manifest <- rbind(manifest, to_manifest_df(mccarroll_hd, new_syn_id))
+  datasets[[mccarroll_hd$name]] <- list(
+    data = meta_new,
+    study = mccarroll_hd,
+    filename = basename(mccarroll_hd$local_file)
+  )
 }
 
 
 # GEN-A18 / TargetALS ----------------------------------------------------------
 
 target_als <- studies$target_als
+
 if (!file.exists(target_als$local_file)) {
   warning(str_glue("{target_als$name} file {target_als$local_file} doesn't exist! ",
                    "This dataset will be excluded from harmonization."))
@@ -531,12 +513,11 @@ if (!file.exists(target_als$local_file)) {
   cat("\n", target_als$gen_name, "/", target_als$name, "\n")
   validate_values(meta_new, spec)
 
-  datasets[[target_als$name]] <- meta_new
-
-  new_filename <- write_metadata(meta_new, "TargetALS_final_metadata.csv")
-  new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
-
-  manifest <- rbind(manifest, to_manifest_df(target_als, new_syn_id))
+  datasets[[target_als$name]] <- list(
+    data = meta_new,
+    study = target_als,
+    filename = "TargetALS_final_metadata.csv"
+  )
 }
 
 
@@ -561,12 +542,11 @@ if (verbose) {
 cat("\n", diverse_cohorts$gen_name, "/", diverse_cohorts$name, "\n")
 validate_values(meta_new, spec)
 
-datasets[[diverse_cohorts$name]] <- meta_new
-
-new_filename <- write_metadata(meta_new, meta_file$name)
-new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
-
-manifest <- rbind(manifest, to_manifest_df(diverse_cohorts, new_syn_id))
+datasets[[diverse_cohorts$name]] <- list(
+  data = meta_new,
+  study = diverse_cohorts,
+  filename = meta_file$name
+)
 
 
 # GEN-B8 / BD2 -----------------------------------------------------------------
@@ -594,12 +574,39 @@ if (!file.exists(bd2$local_file)) {
   cat("\n", bd2$gen_name, "/", bd2$name, "\n")
   validate_values(meta_new, spec)
 
-  datasets[[bd2$name]] <- meta_new
+  datasets[[bd2$name]] <- list(
+    data = meta_new,
+    study = bd2,
+    filename = basename(bd2$local_file)
+  )
+}
 
-  new_filename <- write_metadata(meta_new, basename(bd2$local_file))
+
+# De-duplicate studies ---------------------------------------------------------
+
+dedup_df <- deduplicate_studies(lapply(datasets, "[[", "data"),
+                                spec, verbose = FALSE)
+
+
+# Write files and upload -------------------------------------------------------
+
+for (data_item in datasets) {
+  # subset deduplicated data to this study and to only the columns that existed
+  # in the non-duplicated data
+  new_data <- subset(dedup_df, study == data_item$study$name) |>
+    select(all_of(colnames(data_item$data)))
+
+  new_filename <- write_metadata(new_data, data_item$filename)
   new_syn_id <- synapse_upload(new_filename, spec$upload_synID)
 
-  manifest <- rbind(manifest, to_manifest_df(bd2, new_syn_id))
+  # Create manifest file
+  manifest <- rbind(manifest, to_manifest_df(data_item$study, new_syn_id))
+
+  if ("assoc_studies" %in% names(data_item)) {
+    for (study in data_item$assoc_studies) {
+      manifest <- rbind(manifest, to_manifest_df(study, new_syn_id))
+    }
+  }
 }
 
 
@@ -617,38 +624,17 @@ synapse_upload(manifest_file, spec$upload_synID)
 
 required_columns <- c(spec$demographic_columns, spec$diagnosis_columns)
 
-# TODO we don't need to download if we're saving a list of data sets
-df_list <- apply(manifest, 1, function(m_row) {
-  m_file <- synapse_download(m_row[["metadata_synid"]])
-  meta <- read.csv(m_file$path) |>
-    mutate(
-      across(c(individualID, ageDeath, apoeGenotype), as.character),
-      GENESIS_study = m_row[["GENESIS_study"]],
-      study = m_row[["study"]]
-    ) |>
-    select(all_of(required_columns), GENESIS_study)
-  return(meta)
-}, simplify = FALSE)
-
-df_all <- purrr::list_rbind(df_list)
+combined_data <- dedup_df |>
+  select(all_of(required_columns)) |>
+  mutate(across(c(individualID, ageDeath, apoeGenotype), as.character)) |>
+  merge(select(manifest, study, GENESIS_study))
 
 cat("\nMerged metadata\n")
-validate_values(df_all, spec)
+validate_values(combined_data, spec)
 
 # df_all <- df_all |>
 #  group_by(individualID) |>
 #  mutate(genesis_study = paste(sort(genesis_study), collapse = "; "))
 
-new_file <- write_metadata(df_all, "GENESIS_metadata_combined.csv")
+new_file <- write_metadata(combined_data, "GENESIS_metadata_combined.csv")
 synapse_upload(new_file, spec$upload_synID)
-
-
-# WIP
-dedup <- deduplicate_studies(datasets, spec, verbose = FALSE)
-
-# The binary `Control` diagnosis column is based on all of the other diagnosis
-# columns:
-#   1 if all the other columns are 0 or NA,
-#   0 if there is a 1 in any other column
-dedup$Control <- (rowSums(dedup[, spec$diagnosis_columns], na.rm = TRUE) == 0) |>
-  as.numeric()

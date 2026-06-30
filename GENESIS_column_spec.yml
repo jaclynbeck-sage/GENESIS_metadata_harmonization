@@ -18,7 +18,7 @@ default:
 
   diagnosis_columns:
     ["AD", "ALS", "BD", "DLBD", "Epilepsy", "FTD", "HD", "MDD", "PD", "PSP",
-     "SCZ", "Tumor", "Vascular", "MCI", "Dementia", "Other", "Control"]
+     "SCZ", "Tumor", "Vascular", "MCI", "Dementia", "Other"]
 
 
   ## Demographics --------------------------------------------------------------
