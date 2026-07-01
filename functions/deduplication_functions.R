@@ -56,7 +56,7 @@ library(stringr)
 deduplicate_studies <- function(df_list,
                                 spec,
                                 include_cols = c(spec$demographic_columns, spec$diagnosis_columns),
-                                exclude_cols = c("study"),
+                                exclude_cols = c("study", "dataContributionGroup"),
                                 verbose = TRUE) {
   # Make sure certain fields in each data frame are of the same type. Also
   # convert MSSM-style individual IDs to Diverse Cohorts-style IDs.
@@ -67,22 +67,12 @@ deduplicate_studies <- function(df_list,
         # Special case: MSBB/MSSM samples were re-named for Diverse Cohorts, this
         # makes them directly comparable
         original_individualID = individualID,
-        individualID = str_replace(individualID, "AMPAD_MSSM_0+", ""),
+        individualID = str_replace(individualID, "AMPAD_MSSM_0+", "") |>
+          str_replace("_Mayo", ""),
         individualID = case_when(
-          individualID == "29637" &
-            dataContributionGroup == spec$dataContributionGroup$mssm ~ "29637_MSSM",
-          individualID == "29582" &
-            dataContributionGroup == spec$dataContributionGroup$mssm ~ "29582_MSSM",
+          individualID == "29637" & cohort == spec$cohort$msbb ~ "29637_MSSM",
+          individualID == "29582" & cohort == spec$cohort$msbb ~ "29582_MSSM",
           .default = as.character(individualID)
-        ),
-        # Special case: Some samples contributed by "Emory" are from "Mt Sinai
-        # Brain Bank" and they need to be included with MSSM samples during
-        # de-duplication
-        original_dataContributionGroup = dataContributionGroup,
-        dataContributionGroup = case_when(
-          dataContributionGroup == spec$dataContributionGroup$emory &
-            cohort == spec$cohort$msbb ~ spec$dataContributionGroup$mssm,
-          .default = dataContributionGroup
         )
       )
   })
@@ -90,15 +80,15 @@ deduplicate_studies <- function(df_list,
   meta_all <- purrr::list_rbind(df_list) |> as.data.frame()
   include_cols <- setdiff(include_cols, exclude_cols)
 
-  # Find IDs that have multiple/duplicate rows. Adding dataContributionGroup
-  # accounts for overlapping IDs between different studies that don't refer to
-  # the same individual
+  # Find IDs that have multiple/duplicate rows. Adding cohort accounts for
+  # overlapping IDs between different studies that don't refer to the same
+  # individual
   dupe_ids <- meta_all |>
     select(all_of(include_cols)) |>
     distinct() |>
-    select(individualID, dataContributionGroup) |>
+    select(individualID, cohort) |>
     mutate(
-      group_id = paste(individualID, dataContributionGroup),
+      group_id = paste(individualID, cohort),
       duplicate = duplicated(group_id)
     ) |>
     subset(duplicate == TRUE) |>
@@ -111,7 +101,7 @@ deduplicate_studies <- function(df_list,
     # This will be altered to resolve duplication, and will get added back to the
     # meta_all data frame
     meta_tmp <- subset(meta_all, individualID == ind_id &
-                         dataContributionGroup == dupe_ids$dataContributionGroup[row_id])
+                         cohort == dupe_ids$cohort[row_id])
 
     for (col_name in include_cols) {
       unique_vals <- unique(meta_tmp[, col_name])
@@ -152,6 +142,7 @@ deduplicate_studies <- function(df_list,
             # Use the NPS-AD value for apoe genotype / status where it disagrees
             # with other data sets
             meta_tmp[, col_name] <- meta_tmp[meta_tmp$study == "NPS-AD", col_name]
+
           } else if (col_name %in% c("ageDeath", "PMI")) {
             meta_tmp <- deduplicate_ageDeath_pmi(meta_tmp, leftover, col_name, report_string)
 
@@ -160,8 +151,8 @@ deduplicate_studies <- function(df_list,
                      !is.na(meta_tmp[meta_tmp$study == "BD2", col_name])) {
             # TODO TEMPORARY: If BD2 and NPS-AD disagree on diagnosis, use the
             # BD2 value until NPS-AD's metadata is updated again with the correct values
-            print(meta_tmp[, c("individualID", "study", col_name)])
             meta_tmp[, col_name] <- meta_tmp[meta_tmp$study == "BD2", col_name]
+
           } else {
             # Column is something else that we don't have specific handling for,
             # so we report it but don't try to resolve duplication.
@@ -173,15 +164,14 @@ deduplicate_studies <- function(df_list,
 
     # Replace original rows with de-duplicated data
     rows_replace <- meta_all$individualID == ind_id &
-      meta_all$dataContributionGroup == unique(meta_tmp$dataContributionGroup)
+      meta_all$cohort == unique(meta_tmp$cohort)
     meta_all[rows_replace, ] <- meta_tmp
   }
 
-  # Revert back to original individualIDs and dataContributionGroups
+  # Revert back to original individualIDs
   meta_all <- meta_all |>
-    mutate(individualID = original_individualID,
-           dataContributionGroup = original_dataContributionGroup) |>
-    select(-original_individualID, -original_dataContributionGroup)
+    mutate(individualID = original_individualID) |>
+    select(-original_individualID)
 
   return(meta_all)
 }
@@ -219,17 +209,14 @@ deduplicate_ageDeath_pmi <- function(meta_tmp, leftover, col_name, report_string
   num_vals <- suppressWarnings(as.numeric(leftover)) |>
     na.omit()
 
-  equivalent <- sapply(num_vals, all.equal, num_vals[1], tolerance = 1e-1)
+  equivalent <- abs(num_vals - num_vals[1]) <= 0.1
 
   # If there's a real mismatch, try using the NPS-AD value if it exists. If not,
   # report the mismatch. `num_vals` should have one unique value if all numbers
   # are roughly equal, AND `num_vals` should be the same length as `leftover`.
   # If it's not, that means not all values in `leftover` are numeric (i.e. one
-  # may be 90+). We report it but don't try and resolve the duplication. Note
-  # that `all.equal` returns a string with the difference between two numbers if
-  # they are not equal, rather than FALSE, so we have to check for != TRUE
-  # instead of == FALSE.
-  if (any(equivalent != TRUE)) {
+  # may be 90+). We report it but don't try and resolve the duplication.
+  if (any(!equivalent)) {
     if ("NPS-AD" %in% meta_tmp$study) {
       meta_tmp[, col_name] <- meta_tmp[meta_tmp$study == "NPS-AD", col_name]
     } else {

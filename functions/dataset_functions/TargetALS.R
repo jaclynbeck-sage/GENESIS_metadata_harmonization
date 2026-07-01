@@ -33,6 +33,8 @@
 #     `Comorbidities` column
 #   * Strip quote characters from the `Comorbidities` column so the file writes
 #     correctly
+#   * Manually fix the ageDeath of one individual with duplicate rows. This
+#     individual has two different ageDeath values, so we use the largest value.
 harmonize_TargetALS <- function(metadata, spec) {
   metadata |>
     dplyr::rename(
@@ -104,7 +106,13 @@ harmonize_TargetALS <- function(metadata, spec) {
                                     "stroke|encephalopathy|meningitis"),
 
       # Strip quotes from Comorbidities column
-      Comorbidities = str_replace_all(Comorbidities, "\"", "")
+      Comorbidities = str_replace_all(Comorbidities, "\"", ""),
+
+      ### Manual fix to duplicate record
+      ageDeath = ifelse(individualID == "NEUNP654LLE",
+                        max(ageDeath[individualID == "NEUNP654LLE"]),
+                        ageDeath)
+      ### End manual fix
     ) |>
     as.data.frame()
 }
