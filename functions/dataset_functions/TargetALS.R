@@ -27,8 +27,8 @@
 #     `Subject Group Subcategory` column
 #   * Create binary `DLBD` and `Dementia` diagnosis columns based on the
 #     `Mnd.With.Dementia` column
-#   * Create binary `MDD`, `Epilepsy`, and `Other` diagnosis columns based on
-#     the `Comorbidities` column
+#   * Create binary `MDD`, `MS`, `Epilepsy`, and `Other` diagnosis columns based
+#     on the `Comorbidities` column
 #   * Add to the `DLBD` and `Vascular` columns with data from the
 #     `Comorbidities` column
 #   * Strip quote characters from the `Comorbidities` column so the file writes
@@ -98,9 +98,10 @@ harmonize_TargetALS <- function(metadata, spec) {
                                     spec),
 
       MDD = grep_to_binary_column(Comorbidities, "Depression"),
+      MS = grep_to_binary_column(Comorbidities, "Multiple sclerosis"),
       Epilepsy = grep_to_binary_column(Comorbidities, "Epilepsy"),
       Other = grep_to_binary_column(Comorbidities,
-                                    "stroke|encephalopathy|meningitis|Multiple sclerosis"),
+                                    "stroke|encephalopathy|meningitis"),
 
       # Strip quotes from Comorbidities column
       Comorbidities = str_replace_all(Comorbidities, "\"", "")

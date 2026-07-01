@@ -148,6 +148,7 @@ harmonize_MCMPS <- function(metadata, spec) {
 # column:
 #   MCI: CDR = 0.5 (questionable dementia)
 #   Dementia: CDR >= 1 (mild, moderate, severe, profound, or terminal dementia)
+#     * Individuals with a diagnosis of FTD are also marked as having dementia
 #
 # Source file: syn73713770 (version 1) on Synapse
 #
@@ -223,7 +224,11 @@ harmonize_ROSMAP <- function(metadata, spec) {
 
 # Harmonize SEA-AD metadata
 #
-# Calls harmonize_ADKP_studies and then creates binary diagnosis variables for
+# Calls harmonize_ADKP_studies and then creates binary diagnosis variables for:
+#   AD: based on ADoutcome
+#   PD, MCI, DLBD, Tumor, Vascular: based on Consensus.clinical.diagnosis
+#   Dementia: based on Cognitive.status
+#   Other: based on ADoutcome and Consensus.clinical.diagnosis
 #
 # Source file: syn73713778 (version 1) on Synapse
 #

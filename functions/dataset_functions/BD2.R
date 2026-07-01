@@ -20,7 +20,7 @@
 #   * Add a `cohort` column with either "Mount Sinai Brain Bank" or "UPitt"
 #   * Change `dataContributionGroup` "UPitt" to "University of Pittsburgh"
 #   * Harmonize the `Dx` column into a binary `BD` column
-#   * Harmonize the `ClinConPrimDxText` into a binary `SCZ` column
+#   * Create binary `MS` and `SCZ` columns based on `ClinConPrimDxText`
 #   * Create binary `MDD` column based on `ClinConPrimDxText` and `ClinConSecDxText`
 #   * Create binary `Other` column based on `ClinConPrimDxText`
 #
@@ -84,8 +84,9 @@ harmonize_BD2 <- function(metadata, spec) {
       # together and pattern match
       MDD = grep_to_binary_column(paste(ClinConPrimDxText, ClinConSecDxText),
                                   "Major depressive disorder"),
+      MS = grep_to_binary_column(ClinConPrimDxText, "Multiple sclerosis"),
       Other = grep_to_binary_column(ClinConPrimDxText,
-                                    "Schizoaffective|Encephalopathy|sclerosis")
+                                    "Schizoaffective|Encephalopathy")
       # TODO this study has a "BD_type" column
     )
 }

@@ -17,8 +17,8 @@ default:
      "bScore_LB", "study"]
 
   diagnosis_columns:
-    ["AD", "ALS", "BD", "DLBD", "Epilepsy", "FTD", "HD", "MDD", "PD", "PSP",
-     "SCZ", "Tumor", "Vascular", "MCI", "Dementia", "Other"]
+    ["AD", "ALS", "BD", "Dementia", "DLBD", "Epilepsy", "FTD", "HD", "MCI",
+     "MDD", "MS", "PD", "PSP", "SCZ", "Tumor", "Vascular", "Other"]
 
 
   ## Demographics --------------------------------------------------------------

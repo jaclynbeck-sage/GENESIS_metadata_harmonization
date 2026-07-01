@@ -40,6 +40,8 @@
 #     except for some columns where one row is missing a value and one has the
 #     value, or where two different groups typed slightly different values for
 #     the same column
+#   * Add binary diagnosis columns for AD, PD, DLBD, PSP, Other, MCI, Dementia,
+#     and Vascular
 #
 # Arguments:
 #   metadata - a `data.frame` of metadata from the source metadata file. Columns
@@ -195,7 +197,8 @@ harmonize_ASAP <- function(metadata, spec) {
       Vascular = grep_to_binary_column(path_autopsy_dx, "Cerebrovascular disease")
     )
 
-  # De-duplicate individuals within this data set, *NOT* with NPS-AD.
+  # De-duplicate individuals within this data set. Must happen before main
+  # de-duplication with all datasets due to some ASAP-specific special handling
   meta_new <- deduplicate_studies(
     list(meta_new), spec,
     include_cols = colnames(meta_new),

@@ -522,7 +522,6 @@ if (!file.exists(target_als$local_file)) {
 
 
 # GEN-B4 / AMP-AD_DiverseCohorts -----------------------------------------------
-# Uses Diverse Cohorts metadata from step 1.
 
 diverse_cohorts <- studies$diverse_cohorts
 meta_file <- synapse_download(diverse_cohorts$syn_id)
