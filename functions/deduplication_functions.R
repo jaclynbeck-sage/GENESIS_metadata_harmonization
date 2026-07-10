@@ -68,7 +68,8 @@ deduplicate_studies <- function(df_list,
         # makes them directly comparable
         original_individualID = individualID,
         individualID = str_replace(individualID, "AMPAD_MSSM_0+", "") |>
-          str_replace("_Mayo", ""),
+          str_replace("_Mayo", "") |> # DivCo
+          str_replace("PM-MS_", ""), # AMP-PD has some overlap with NPS-AD and BD2
         individualID = case_when(
           individualID == "29637" & cohort == spec$cohort$msbb ~ "29637_MSSM",
           individualID == "29582" & cohort == spec$cohort$msbb ~ "29582_MSSM",
