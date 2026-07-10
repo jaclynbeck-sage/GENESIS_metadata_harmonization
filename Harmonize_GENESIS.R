@@ -586,6 +586,9 @@ if (!file.exists(bd2$local_file)) {
 dedup_df <- deduplicate_studies(lapply(datasets, "[[", "data"),
                                 spec, verbose = FALSE)
 
+# Dementia should be 1 if FTD is 1
+dedup_df$Dementia[dedup_df$FTD == 1] <- 1
+
 
 # Write files and upload -------------------------------------------------------
 

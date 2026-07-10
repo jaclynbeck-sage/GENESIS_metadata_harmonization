@@ -80,15 +80,22 @@ harmonize_TargetALS <- function(metadata, spec) {
         str_replace("Thal amyloid phase", "Phase"),
 
       # Diagnosis columns
-      AD = make_binary_column(selection_group, "ALS, Alzheimers", spec),
+      AD = pmax(
+        make_binary_column(selection_group, "ALS, Alzheimers", spec),
+        grep_to_binary_column(`Subject Group Subcategory`, "Alzheimer's Disease")
+      ),
       ALS = grep_to_binary_column(selection_group, "^ALS"),
       FTD = make_binary_column(selection_group, "ALS/FTD", spec),
 
-      PD = grep_to_binary_column(`Subject Group Subcategory`, "Parkinson's Disease"),
+      PD = pmax(
+        grep_to_binary_column(`Subject Group Subcategory`, "Parkinson's Disease"),
+        grep_to_binary_column(Comorbidities, "Parkinsons")
+      ),
       Tumor = grep_to_binary_column(`Subject Group Subcategory`, "Metastatic Carcinoma"),
       Vascular = pmax(
         grep_to_binary_column(`Subject Group Subcategory`, "Cerebrovascular disease"),
-        grep_to_binary_column(Comorbidities, "Cerebrovascular|CAA")
+        grep_to_binary_column(Comorbidities,
+                              "Cerebrovascular|CAA|non(-| )amyloid SVD|arteriosclerosis")
       ),
 
       DLBD = pmax(
