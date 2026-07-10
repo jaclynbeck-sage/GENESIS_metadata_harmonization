@@ -163,12 +163,13 @@ harmonize_ASAP <- function(metadata, spec) {
 
       # This subject has two different PMIs listed in duplicate rows, so we use
       # the lowest one (chosen arbitrarily).
-      PMI = ifelse(asap_subject_id == "ASAP_PMDBS_000225", 9.25, PMI),
+      PMI = ifelse(asap_subject_id == "ASAP_PMDBS_000225",
+                   min(PMI[asap_subject_id == "ASAP_PMDBS_000225"]),
+                   PMI),
 
       ## End manual fixes
 
       ADoutcome = determineADoutcome(.data, spec),
-      # shortcut function from ADKP_datasets.R
       AD = make_binary_column(ADoutcome, "AD", spec),
 
       # gp2_phenotype is either PD or Control. There are no missing values.
@@ -185,7 +186,7 @@ harmonize_ASAP <- function(metadata, spec) {
       # There are no missing primary_diagnosis values
       Other = case_when(
         primary_diagnosis == "Other neurological disorder" ~ 1,
-        primary_diagnosis == "Alzheimer's disease" & ADoutcome == "Other" ~ 1,
+        ADoutcome == "Other" ~ 1,
         .default = 0
       ),
 
@@ -219,7 +220,10 @@ harmonize_ASAP <- function(metadata, spec) {
         everything(),
         ~ ifelse(is.character(.x) && !all(is.na(.x)),
                  paste(sort(na.omit(unique(.x))), collapse = "; "),
-                 unique(.x)) # Leave numeric or NA values alone but keep them in the data frame
+                 # Leave numeric or NA values alone but keep them in the data
+                 # frame. If there is more than one unique value, code will
+                 # error here so I know what to look at
+                 unique(.x))
       )
     ) |>
     distinct() |>

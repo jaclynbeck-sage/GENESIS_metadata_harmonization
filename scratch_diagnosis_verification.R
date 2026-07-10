@@ -147,7 +147,45 @@ cat("PD vs Info.Diagnosis: PASS", "\n")
 
 # ASAP
 
+df <- read.csv(file.path(output_dir, "ASAP_PMDBS_metadata_harmonized.csv"))
 
+print_filled_diagnoses(df, spec)
+
+tb <- table(df$ADoutcome, df$AD, useNA = "ifany")
+print(tb)
+
+validate_ad_v_adoutcome(df)
+
+validate_all_ones(df$PD, df$gp2_phenotype, "PD")
+validate_all_zeros(df$PD, df$gp2_phenotype, "PD")
+
+validate_all_ones(df$PD, df$primary_diagnosis, "Idiopathic PD")
+validate_all_zeros(df$PD, df$primary_diagnosis,
+                   c("Alzheimer's disease", "Idiopathic PD", "Other neurological disorder"))
+
+validate_all_ones(df$DLBD, grepl("Lewy", df$path_autopsy_dx), "TRUE")
+validate_all_zeros(df$DLBD, grepl("Lewy", df$path_autopsy_dx), "TRUE")
+
+validate_all_ones(df$PSP, grepl("supranuclear", df$path_autopsy_dx), "TRUE")
+validate_all_zeros(df$PSP, grepl("supranuclear", df$path_autopsy_dx), "TRUE")
+
+validate_all_ones(df$Other, df$primary_diagnosis, "Other neurological disorder")
+validate_all_ones(df$Other, df$ADoutcome, "Other")
+validate_all_zeros(df$Other,
+                   df$primary_diagnosis == "Other neurological disorder" |
+                     df$ADoutcome == "Other",
+                   "TRUE")
+
+validate_all_ones(df$MCI, df$cognitive_status, "MCI")
+validate_all_zeros(df$MCI, df$cognitive_status, "MCI")
+
+validate_all_ones(df$Dementia, df$cognitive_status, "Dementia")
+validate_all_zeros(df$Dementia, df$cognitive_status, "Dementia")
+
+validate_no_mci_dementia_overlap(df)
+
+validate_all_ones(df$Vascular, grepl("Cerebrovascular", df$path_autopsy_dx), "TRUE")
+validate_all_zeros(df$Vascular, grepl("Cerebrovascular", df$path_autopsy_dx), "TRUE")
 
 
 # BD2
@@ -190,14 +228,13 @@ validate_all_zeros(df$MS, grepl("Multiple sclerosis", combined_cols), "TRUE")
 stopifnot(all(!is.na(df$MS)))
 
 # All Dx = Schizoaffective should have an Other diagnosis of 1
-# Control values can also be other, so we validate all zeros excluding both columns
+# Other Dx values can have a diagnosis of Other so we don't check all_zeros
 validate_all_ones(df$Other, df$Dx, "Schizoaffective")
-validate_all_zeros(df$Other, df$Dx, c("Schizoaffective", "Control"))
 
 # All ClinConPrimDxText or ClinConSecDxText with Encephalopathy or Schizoaffective
-# should have an Other diagnosis of 1
+# should have an Other diagnosis of 1. Other samples can have a diagnosis of
+# Other too so we don't check all_zeros
 validate_all_ones(df$Other, grepl("Enceph|Schizoaffective", combined_cols), "TRUE")
-validate_all_zeros(df$Other, grepl("Enceph|Schizoaffective", combined_cols), "TRUE")
 
 # There should be no missing Other values
 stopifnot(all(!is.na(df$Other)))
@@ -334,7 +371,9 @@ validate_all_zeros(df$MCI, df$CDR == 0.5 | is.na(df$CDR), "TRUE")
 validate_no_mci_dementia_overlap(df)
 validate_dementia_ftd_overlap(df)
 
-# TODO Other does NOT match ADoutcome
+# All ADoutcome = Other should have Other = 1. Two "Other = 1" values are
+# cross-filled from BD2 so we don't check for all_zeros
+validate_all_ones(df$Other, df$ADoutcome, "Other")
 
 
 # PEC_CMC
@@ -507,8 +546,10 @@ validate_all_zeros(df$ALS, grepl("ALS", df$Subject.Group.Subcategory), "TRUE")
 
 validate_all_ones(df$Dementia, df$Mnd.With.Dementia %in% c("AD", "Lewy Body Dementia", "Yes"), "TRUE")
 
-# TODO check -- FTD overlap makes this not true
-validate_all_zeros(df$Dementia, df$Mnd.With.Dementia, c("AD", "Lewy Body Dementia", "Yes"))
+validate_all_zeros(df$Dementia,
+                   df$Mnd.With.Dementia %in% c("AD", "Lewy Body Dementia", "Yes") |
+                     df$FTD == 1,
+                   "TRUE")
 
 validate_all_ones(df$DLBD,
                   df$Mnd.With.Dementia == "Lewy Body Dementia" |

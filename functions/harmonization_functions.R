@@ -57,6 +57,9 @@ harmonize <- function(study_obj, metadata, spec) {
     metadata[, field] <- NA
   }
 
+  # Dementia should be 1 if FTD is 1
+  metadata$Dementia[metadata$FTD == 1] <- 1
+
   # Don't fill NA values with "missing" in the ageDeath or PMI columns.
   # Diagnosis columns are not included in this NA fill operation.
   cols_fill <- setdiff(spec$demographic_columns, c("ageDeath", "PMI"))

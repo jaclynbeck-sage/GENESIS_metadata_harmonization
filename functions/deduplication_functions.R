@@ -146,12 +146,21 @@ deduplicate_studies <- function(df_list,
           } else if (col_name %in% c("ageDeath", "PMI")) {
             meta_tmp <- deduplicate_ageDeath_pmi(meta_tmp, leftover, col_name, report_string)
 
-          } else if (col_name %in% spec$diagnosis_columns &&
+          } else if (col_name %in% c("BD", "SCZ", "MS") &&
                      "BD2" %in% meta_tmp$study &&
                      !is.na(meta_tmp[meta_tmp$study == "BD2", col_name])) {
-            # TODO TEMPORARY: If BD2 and NPS-AD disagree on diagnosis, use the
-            # BD2 value until NPS-AD's metadata is updated again with the correct values
+            # TODO TEMPORARY: If BD2 and NPS-AD disagree on BD, MS, or SCZ, use
+            # the BD2 value until NPS-AD's metadata is updated again with the
+            # correct values
             meta_tmp[, col_name] <- meta_tmp[meta_tmp$study == "BD2", col_name]
+
+          } else if (col_name == "Other") {
+            # If two data sets differ on 0 vs 1 for the "Other" column, use 1
+            meta_tmp[, col_name] <- max(meta_tmp[, col_name], na.rm = TRUE)
+
+          } else if (col_name %in% spec$diagnosis_columns) {
+            # Raise error if two data sets disagree on a non-Other diagnosis
+            stop(report_string)
 
           } else {
             # Column is something else that we don't have specific handling for,
