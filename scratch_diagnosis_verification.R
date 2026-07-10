@@ -135,6 +135,8 @@ print(tb)
 validate_all_ones(df$PD, df$Info.Diagnosis, "PD")
 validate_all_zeros(df$PD, df$Info.Diagnosis, "PD")
 
+validate_no_mci_dementia_overlap(df)
+
 # No missing values
 stopifnot(all(!is.na(df$PD)))
 
@@ -162,6 +164,9 @@ validate_all_zeros(df$PD, df$gp2_phenotype, "PD")
 validate_all_ones(df$PD, df$primary_diagnosis, "Idiopathic PD")
 validate_all_zeros(df$PD, df$primary_diagnosis,
                    c("Alzheimer's disease", "Idiopathic PD", "Other neurological disorder"))
+
+# Two PD samples don't have "Parkinson's" in path_autopsy_dx so we don't test all_zeros
+validate_all_ones(df$PD, grepl("Parkinson's", df$path_autopsy_dx), "TRUE")
 
 validate_all_ones(df$DLBD, grepl("Lewy", df$path_autopsy_dx), "TRUE")
 validate_all_zeros(df$DLBD, grepl("Lewy", df$path_autopsy_dx), "TRUE")
